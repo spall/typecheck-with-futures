@@ -1,7 +1,9 @@
 #lang racket
 
 
-#| Simply-typed lambda calculus
+#| http://www.cs.cornell.edu/courses/cs6110/2013sp/lectures/lec25-sp13.pdf
+
+   Simply-typed lambda calculus
 
    prim values b ::= n | true | false | null
    terms       e ::= b | x | e1 e2 | lambda x:t . e
