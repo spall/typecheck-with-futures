@@ -1,6 +1,7 @@
 #lang racket
 
-
+(provide typecheck-expr
+         parallel-typecheck-expr)
 #| http://www.cs.cornell.edu/courses/cs6110/2013sp/lectures/lec25-sp13.pdf
 
    Simply-typed lambda calculus
@@ -19,7 +20,9 @@
     [(or 'int 'bool 'ntype)
      #t]
     [`(,t1 -> ,t2)
-     (and (type? t1) (type? t2))]))
+     (and (type? t1) (type? t2))]
+    [else
+     #f]))
 
 (define (typecheck expr tenv)
   (match expr
@@ -42,18 +45,21 @@
        [`(,t1 -> ,t2)
         (if (equal? t1 (typecheck e2 tenv))
             t2
-            'error)]
+            (error 'typecheck "no type"))]
        [else
-        'error])]))
+        (error 'typecheck "no type")])]
+    [else
+     (error 'typecheck "bad form")]))
 
-;; tests
-(typecheck 5 empty-env)
-(typecheck 'true empty-env)
-(typecheck 'false empty-env)
-(typecheck `(lambda (x : bool) 5) empty-env)
-(typecheck `((lambda (x : bool) 5) ,'false) empty-env)
-(typecheck `((lambda (x : bool) x) ,'true) empty-env)
-(typecheck `((lambda (x : int) (lambda (y : bool) x)) 22) empty-env)
+(define (typecheck-expr expr)
+  (typecheck expr empty-env))
+
+(define (parallel-typecheck-expr exprs)
+  (map
+   touch
+   (map (lambda (e) (future (lambda () (typecheck e empty-env))))
+        exprs)))
+  
 
 #|
  generate some really huge terms so they take a non-trivial amount of time to typecheck.
