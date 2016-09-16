@@ -1,7 +1,8 @@
 #lang racket
 
 (provide typecheck-expr
-         parallel-typecheck-expr)
+         parallel-typecheck-expr
+         type?)
 #| http://www.cs.cornell.edu/courses/cs6110/2013sp/lectures/lec25-sp13.pdf
 
    Simply-typed lambda calculus
@@ -49,15 +50,15 @@
        [else
         (error 'typecheck "no type")])]
     [else
-     (error 'typecheck "bad form")]))
+     (error 'typecheck "bad form: ~a" expr)]))
 
 (define (typecheck-expr expr)
   (typecheck expr empty-env))
 
 (define (parallel-typecheck-expr exprs)
-  (map
+  (for-each
    touch
-   (map (lambda (e) (future (lambda () (typecheck e empty-env))))
+   (map (lambda (e) (future (lambda () (typecheck-expr e))))
         exprs)))
   
 
