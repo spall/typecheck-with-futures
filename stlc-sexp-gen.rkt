@@ -2,7 +2,7 @@
 
 (require "s-exp-stlc.rkt"
          racket/random)
-(provide gen-sexp)
+(provide gen-well-formed-sexp)
 
 #| http://www.cs.cornell.edu/courses/cs6110/2013sp/lectures/lec25-sp13.pdf
 
@@ -114,9 +114,12 @@
 (define (gen-sexp size)
   (gen-term size '()))
 
+(random-seed 1)
+
 (define (gen-well-formed-sexp size)
   (let ([lam (gen-lambda size '())])
     (gen-application lam (gen-parameters lam))))
-                   
+
+
 
   
