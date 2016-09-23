@@ -1,7 +1,6 @@
 #lang racket
 
 (provide typecheck-expr
-         parallel-typecheck-expr
          type?)
 #| http://www.cs.cornell.edu/courses/cs6110/2013sp/lectures/lec25-sp13.pdf
 
@@ -22,12 +21,25 @@
      #t]
     [`(,t1 -> ,t2)
      (and (type? t1) (type? t2))]
-    [else
+    [_
      #f]))
+
+(define (type-equal? t1 t2)
+  (match* (t1 t2)
+    [(`(,t1_ -> ,t2_) `(,t1__ -> ,t2__))
+     (and (type-equal? t1_ t1__) (type-equal? t2_ t2__))]
+     [('int 'int)
+      #t]
+     [('bool 'bool)
+      #t]
+     [('ntype 'ntype)
+      #t]
+     [(_ _)
+      #f]))
 
 (define (typecheck expr tenv)
   (match expr
-    [(? integer? n)
+    [(? exact-integer? n)
      'int]
     [(or 'true 'false)
      'bool]
@@ -38,13 +50,13 @@
     [`(lambda (,(? symbol? x) : ,(? type? t)) ,body)
      `(,t -> ,(typecheck body
                          (lambda (arg)
-                           (if (equal? x arg) ;; eq? is same. on symbols
+                           (if (eq? x arg) ;; eq? is same. on symbols
                                t
                                (tenv arg)))))]
     [`(,e1 ,e2)
      (match (typecheck e1 tenv)
        [`(,t1 -> ,t2)
-        (if (equal? t1 (typecheck e2 tenv))
+        (if (type-equal? t1 (typecheck e2 tenv))
             t2
             (error 'typecheck "no type"))]
        [else
@@ -55,11 +67,10 @@
 (define (typecheck-expr expr)
   (typecheck expr empty-env))
 
-(define (parallel-typecheck-expr exprs)
-  (for-each
-   touch
-   (map (lambda (e) (future (lambda () (typecheck-expr e))))
-        exprs)))
+
+
+;; deal with stack overflow, make tail recursive?
+
   
 
 #|
