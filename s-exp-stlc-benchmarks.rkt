@@ -35,7 +35,7 @@
   
   (for-each
    touch
-   (for/list ([pc (in-range (min (pcount len)))])
+   (for/list ([pc (in-range (min pcount len))])
      (future (λ ()
                (for ([e (in-vector exprs (* pc seq-size)
                                    (min len (* (+ 1 pc) seq-size)))])
