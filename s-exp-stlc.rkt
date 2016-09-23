@@ -47,20 +47,28 @@
      'ntype]
     [(? symbol? x)
      (tenv x)]
-    [`(lambda (,(? symbol? x) : ,(? type? t)) ,body)
-     `(,t -> ,(typecheck body
-                         (lambda (arg)
-                           (if (eq? x arg) ;; eq? is same. on symbols
-                               t
-                               (tenv arg)))))]
-    [`(,e1 ,e2)
+    [`(begin ,expr ..1)
+     (foldl (λ (e init)
+              (typecheck e tenv))
+            #f expr)]
+    [`(lambda ((,(? symbol? x) : ,(? type? t)) ..1) ,body)
+     (let ([new-tenv (foldl (lambda (arg type tenv_)
+                              (lambda (z)
+                                (if (eq? z arg)
+                                    type
+                                    (tenv_ z))))
+                            tenv x t)])
+       `(,@t  -> ,(typecheck body new-tenv)))]
+    [`(,e1 ,e2 ..1)
      (match (typecheck e1 tenv)
-       [`(,t1 -> ,t2)
-        (if (type-equal? t1 (typecheck e2 tenv))
+       [`(,t1 ..1 -> ,t2)
+        (if (andmap (lambda (t_ e_)
+                      (type-equal? t_ (typecheck e_ tenv)))
+                    t1 e2)
             t2
-            (error 'typecheck "no type"))]
+            (error 'typecheck "no type: ~a~n" expr))]
        [else
-        (error 'typecheck "no type")])]
+        (error 'typecheck "no type ~a~n" expr)])]
     [else
      (error 'typecheck "bad form: ~a" expr)]))
 
