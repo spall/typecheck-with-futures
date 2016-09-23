@@ -35,6 +35,10 @@
       [else       ;; return false
        'false])))
 
+(define (gen-begin size ls)
+  `(begin ,@(for/list ([_ (in-range size)])
+              (gen-prim-value))))
+
 (define (gen-term size ls)
   (cond
     [(<= size 1)
@@ -52,29 +56,26 @@
 
 
 ;; generates nested lambdas.
-(define (gen-lambda size ls)
-  (if (= 1 size)
-      (let ([arg (gensym)])
-        `(lambda (,arg : ,(gen-type))
-           ,(gen-term 0 (cons arg ls))))
-        
-      (let ([arg (gensym)])
-        `(lambda (,arg : ,(gen-type))
-           ,(gen-lambda (sub1 size) (cons arg ls))))))
-
-(define (gen-lambda-w-body body)
-  (let ([arg (gensym)])
-    `(lambda (,arg : ,(gen-type))
-       ,body)))
-
+(define (gen-lambda depth arg-num ls)
+  (let ([args (for/list ([_ (in-range arg-num)])
+                (gensym))]
+        [types (for/list ([_ (in-range arg-num)])
+                 (gen-type))])
+    `(lambda (,@(map (λ (a t)
+                       `(,a : ,t))
+                     args types))
+       ,(if (<= depth 1)
+            (gen-begin 20 ls) ;; 20 is random
+            (gen-lambda (sub1 depth) (cons args ls))))))
+  
 ;; takes a lambda, generates necessary parameters
 (define (gen-parameters lam)
   (match lam
-    [`(lambda (,(? symbol? arg) : ,t1) ,body)
+    [`(lambda ((,(? symbol? arg) : ,t1) ..1) ,body)
      (if (is-lambda? body)
-         (cons (gen-term-w-type t1)
+         (cons (map gen-term-w-type t1)
                (gen-parameters body))
-         (cons (gen-term-w-type t1)
+         (cons (map gen-term-w-type t1)
                '()))]
     [else
      (error 'gen-application "not a lambda ~v~n" lam)]))
@@ -85,7 +86,7 @@
     [(empty? params)
      expr]
     [else
-     (gen-application `(,expr ,(car params))
+     (gen-application `(,expr ,@(car params))
                       (cdr params))]))
   
 ;; expr has type lambda?
@@ -116,9 +117,11 @@
 
 (random-seed 1)
 
-(define (gen-well-formed-sexp size)
-  (let ([lam (gen-lambda size '())])
+(define (gen-well-formed-sexp depth arg-num)
+  (let ([lam (gen-lambda depth arg-num '())])
     (gen-application lam (gen-parameters lam))))
+
+;; make multi argument functions. add begin. allow sequencing of exprs.
 
 
 
