@@ -39,9 +39,9 @@
   `(begin ,@(for/list ([_ (in-range size)])
               (gen-prim-value))))
 
-(define (gen-term size ls)
+(define (gen-term depth arg-num ls)
   (cond
-    [(<= size 1)
+    [(<= depth 1)
      (let ([rand (random 2)])
        (if (= rand 0)
            (list-ref ls (random (length ls)))
@@ -50,9 +50,9 @@
      (let ([rand (random 2)])
        (cond
          [(= rand 0) ;; app
-          (gen-application (- size 1) ls)]
+          (gen-application (- depth 1) ls)]
          [else ;; lambda
-          (gen-lambda (- size 1) ls)]))]))
+          (gen-lambda depth arg-num ls)]))]))
 
 
 ;; generates nested lambdas.
@@ -66,7 +66,7 @@
                      args types))
        ,(if (<= depth 1)
             (gen-begin 20 ls) ;; 20 is random
-            (gen-lambda (sub1 depth) (cons args ls))))))
+            (gen-lambda (sub1 depth) arg-num (cons args ls))))))
   
 ;; takes a lambda, generates necessary parameters
 (define (gen-parameters lam)
@@ -106,14 +106,18 @@
      (random-ref (list 'true 'false))]
     ['ntype
      'null]
-    [`(,(? type? t1) -> ,(? type? t2))
-     `(lambda (,(gensym) : ,t1) ,(gen-term-w-type t2))]
+    [`(,(? type? t1) ..1 -> ,(? type? t2))
+     `(lambda (,@(map (λ (t_)
+                        `(,(gensym) : ,t_))
+                      t1)) ,(gen-term-w-type t2))]
     [else
      (error 'gen-term-w-type "not a valid type ~v" t)]))
 
 
 (define (gen-sexp size)
-  (gen-term size '()))
+  (define depth 10)
+  (define argnum (floor (/ size depth)))
+  (gen-term depth argnum '()))
 
 (random-seed 1)
 
