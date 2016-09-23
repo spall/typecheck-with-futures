@@ -17,58 +17,156 @@
 (typecheck-expr (gen-well-formed-sexp 1000))
 |#
 
-(displayln "done generating")
+(define (typecheck-sequential exprs)
+  (void
+   (for ([e (in-vector exprs)])
+     (typecheck-expr e))))
 
-;; bulk of time is spent generating
-
-#|
-(typecheck-expr `(lambda (x : bool) x))
-(time (typecheck-expr (gen-well-formed-sexp 5000)))
-(time (typecheck-expr (gen-well-formed-sexp 5000)))
-(time (typecheck-expr (gen-well-formed-sexp 5000)))
-(time (typecheck-expr (gen-well-formed-sexp 5000)))
-|#
-
-#|
-(define (parallel-typecheck-expr exprs)
+(define (naive-typecheck-parallel exprs)
   (for-each
    touch
-   (map (lambda (e) (future (lambda () (typecheck-expr e))))
-        exprs)))
-|#
-#|
-(for ([_ (in-range 1000)])
-  (for-each (lambda (e) (time (typecheck-expr e)))
-            large-expression))
+   (for/list ([e (in-vector exprs)])
+     (future (λ () (typecheck-expr e))))))
 
-(displayln "running in parallel")
-|#
+(define (better-typecheck-parallel exprs)
+  (define pcount (processor-count))
+  (define len (vector-length exprs))
+  (define seq-size (ceiling (/ len pcount)))
+  
+  (for-each
+   touch
+   (for/list ([pc (in-range (min (pcount len)))])
+     (future (λ ()
+               (for ([e (in-vector exprs (* pc seq-size)
+                                   (min len (* (+ 1 pc) seq-size)))])
+                 (typecheck-expr e)))))))
 
-#|
-(typecheck-expr expr1)
-(typecheck-expr expr2)
-|#
-
-#|
-(for ([_ (in-range 1000)])
-(for-each
-       touch
-       (map (lambda (e) (future (lambda () (typecheck-expr e))))
-            (list expr1))))
-|#
-
-(define expr (gen-well-formed-sexp 290))
-(for ([_ (in-range 1000)])
-(define f (future (lambda () (typecheck-expr expr))))
-(map cons '(1 2 3) '(1 2 3))
-  (touch f))
+;; gen-well-formed-sexp depth argnum
+(define expr1 (gen-well-formed-sexp 5 20))
+(define expr2 (gen-well-formed-sexp 10 50))
+(define expr3 (gen-well-formed-sexp 20 50))
+(define expr4 (gen-well-formed-sexp 20 100))
 
 
+;; 10 exprs
+(define 10-exprs1 (make-vector 10 expr1))
+(define 10-exprs2 (make-vector 10 expr2))
+(define 10-exprs3 (make-vector 10 expr3))
+(define 10-exprs4 (make-vector 10 expr4))
+(displayln "typecheck 10 expressions")
 
-#|
-(for ([_ (in-range 1000)])
-  (displayln (typecheck-expr expr1)))
-|#
+(displayln "time size 5/20")
+(displayln "sequential")
+(time (typecheck-sequential 10-exprs1))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 10-exprs1))
+(displayln "better parallel")
+(time (better-typecheck-parallel 10-exprs1))
+
+(displayln "time size 10/50")
+(displayln "sequential")
+(time (typecheck-sequential 10-exprs2))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 10-exprs2))
+(displayln "better parallel")
+(time (better-typecheck-parallel 10-exprs2))
+
+(displayln "time size 20/50")
+(displayln "sequential")
+(time (typecheck-sequential 10-exprs3))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 10-exprs3))
+(displayln "better parallel")
+(time (better-typecheck-parallel 10-exprs3))
+
+(displayln "time size 20/100")
+(displayln "sequential")
+(time (typecheck-sequential 10-exprs4))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 10-exprs4))
+(displayln "better parallel")
+(time (better-typecheck-parallel 10-exprs4))
+
+
+;; 50 exprs
+(define 50-exprs1 (make-vector 50 expr1))
+(define 50-exprs2 (make-vector 50 expr2))
+(define 50-exprs3 (make-vector 50 expr3))
+(define 50-exprs4 (make-vector 50 expr4))
+(displayln "typecheck 50 expressions")
+
+(displayln "time size 5/20")
+(displayln "sequential")
+(time (typecheck-sequential 50-exprs1))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 50-exprs1))
+(displayln "better parallel")
+(time (better-typecheck-parallel 50-exprs1))
+
+(displayln "time size 10/50")
+(displayln "sequential")
+(time (typecheck-sequential 50-exprs2))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 50-exprs2))
+(displayln "better parallel")
+(time (better-typecheck-parallel 50-exprs2))
+
+(displayln "time size 20/50")
+(displayln "sequential")
+(time (typecheck-sequential 50-exprs3))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 50-exprs3))
+(displayln "better parallel")
+(time (better-typecheck-parallel 50-exprs3))
+
+(displayln "time size 20/100")
+(displayln "sequential")
+(time (typecheck-sequential 50-exprs4))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 50-exprs4))
+(displayln "better parallel")
+(time (better-typecheck-parallel 50-exprs4))
+
+;; 100 exprs
+(define 100-exprs1 (make-vector 100 expr1))
+(define 100-exprs2 (make-vector 100 expr2))
+(define 100-exprs3 (make-vector 100 expr3))
+(define 100-exprs4 (make-vector 100 expr4))
+(displayln "typecheck 50 expressions")
+
+(displayln "time size 5/20")
+(displayln "sequential")
+(time (typecheck-sequential 100-exprs1))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 100-exprs1))
+(displayln "better parallel")
+(time (better-typecheck-parallel 100-exprs1))
+
+(displayln "time size 10/50")
+(displayln "sequential")
+(time (typecheck-sequential 100-exprs2))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 100-exprs2))
+(displayln "better parallel")
+(time (better-typecheck-parallel 100-exprs2))
+
+(displayln "time size 20/50")
+(displayln "sequential")
+(time (typecheck-sequential 100-exprs3))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 100-exprs3))
+(displayln "better parallel")
+(time (better-typecheck-parallel 100-exprs3))
+
+(displayln "time size 20/100")
+(displayln "sequential")
+(time (typecheck-sequential 100-exprs4))
+(displayln "naive parallel")
+(time (naive-typecheck-parallel 100-exprs4))
+(displayln "better parallel")
+(time (better-typecheck-parallel 100-exprs4))
+
+
 
 
 
