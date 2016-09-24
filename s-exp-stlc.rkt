@@ -2,6 +2,9 @@
 
 (provide typecheck-expr
          type?)
+(require (rename-in racket/unsafe/ops
+                    [unsafe-car ucar]
+                    [unsafe-cdr ucdr]))
 #| http://www.cs.cornell.edu/courses/cs6110/2013sp/lectures/lec25-sp13.pdf
 
    Simply-typed lambda calculus
@@ -37,6 +40,28 @@
      [(_ _)
       #f]))
 
+(define (andmap2 proc l1 l2)
+  (cond
+    [(and (empty? l1) (empty? l2))
+     #t]
+    [else
+     (and (proc (ucar l1) (ucar l2))
+          (andmap2 proc (ucdr l1) (ucdr l2)))]))
+
+(define (foldl1 proc init l1)
+  (cond
+    [(empty? l1)
+     init]
+    [else
+     (foldl1 proc (proc (ucar l1) init) (ucdr l1))]))
+
+(define (foldl2 proc init l1 l2)
+  (cond
+    [(and (empty? l1) (empty? l2))
+     init]
+    [else
+     (foldl2 proc (proc (ucar l1) (ucar l2) init) (ucdr l1) (ucdr l2))]))
+
 (define (typecheck expr tenv)
   (match expr
     [(? exact-integer? n)
@@ -47,22 +72,24 @@
      'ntype]
     [(? symbol? x)
      (tenv x)]
-    [`(begin ,expr ..1)
-     (foldl (λ (e init)
-              (typecheck e tenv))
-            #f expr)]
+    [`(begin ,expr ..1) ;; 
+     (foldl1 (λ (e init)
+               (typecheck e tenv))
+             #f expr)]
     [`(lambda ((,(? symbol? x) : ,(? type? t)) ..1) ,body)
-     (let ([new-tenv (foldl (lambda (arg type tenv_)
-                              (lambda (z)
-                                (if (eq? z arg)
-                                    type
-                                    (tenv_ z))))
-                            tenv x t)])
+     ;;`(lambda (,@(list `(,(? symbol? x) : ,(? type? t)) ..1)) ,body)
+     ;;`(lambda ((,(? symbol? x) : ,(? type? t)) ..1) ,body)
+     (let ([new-tenv (foldl2 (lambda (arg type tenv_)
+                               (lambda (z)
+                                 (if (eq? z arg)
+                                     type
+                                     (tenv_ z))))
+                             tenv x t)])
        `(,@t  -> ,(typecheck body new-tenv)))]
     [`(,e1 ,e2 ..1)
      (match (typecheck e1 tenv)
        [`(,t1 ..1 -> ,t2)
-        (if (andmap (lambda (t_ e_)
+        (if (andmap2 (lambda (t_ e_) 
                       (type-equal? t_ (typecheck e_ tenv)))
                     t1 e2)
             t2
@@ -75,7 +102,8 @@
 (define (typecheck-expr expr)
   (typecheck expr empty-env))
 
-
+;; (list-rest a b c) == (list a b c ...)
+;; 
 
 ;; deal with stack overflow, make tail recursive?
 
