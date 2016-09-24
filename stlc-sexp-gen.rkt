@@ -92,7 +92,7 @@
 ;; expr has type lambda?
 (define (is-lambda? expr)
   (match (typecheck-expr expr)
-    [`(,t1 -> ,t2)
+    [`(,t1 ..1 -> ,t2)
      #t]
     [_
      #f]))
