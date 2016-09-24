@@ -1,6 +1,9 @@
 #lang racket
 
 (provide typecheck-expr
+         typecheck-sequential
+         naive-typecheck-parallel
+         better-typecheck-parallel
          type?)
 (require (rename-in racket/unsafe/ops
                     [unsafe-car ucar]
@@ -101,6 +104,30 @@
 
 (define (typecheck-expr expr)
   (typecheck expr empty-env))
+
+(define (typecheck-sequential exprs)
+  (void
+   (for ([e (in-vector exprs)])
+     (typecheck-expr e))))
+
+(define (naive-typecheck-parallel exprs)
+  (for-each
+   touch
+   (for/list ([e (in-vector exprs)])
+     (future (λ () (typecheck-expr e))))))
+
+(define (better-typecheck-parallel exprs)
+  (define pcount (processor-count))
+  (define len (vector-length exprs))
+  (define seq-size (ceiling (/ len pcount)))
+  
+  (for-each
+   touch
+   (for/list ([pc (in-range (min pcount len))])
+     (future (λ ()
+               (for ([e (in-vector exprs (* pc seq-size)
+                                   (min len (* (+ 1 pc) seq-size)))])
+                 (typecheck-expr e)))))))
 
 ;; (list-rest a b c) == (list a b c ...)
 ;; 
