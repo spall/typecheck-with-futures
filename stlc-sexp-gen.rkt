@@ -23,7 +23,7 @@
       [(= rand 1)
        'bool]
       [else
-       `(,(gen-type) -> ,(gen-type))])))
+       `(,(list (gen-type)) -> ,(gen-type))])))
 
 (define (gen-prim-value)
   (let ([rand (random 3)])
@@ -71,7 +71,8 @@
 ;; takes a lambda, generates necessary parameters
 (define (gen-parameters lam)
   (match lam
-    [`(lambda ((,(? symbol? arg) : ,t1) ..1) ,body)
+    [`(lambda ,args ,body)
+     (define t1 (map caddr args))
      (if (is-lambda? body)
          (cons (map gen-term-w-type t1)
                (gen-parameters body))
@@ -92,7 +93,7 @@
 ;; expr has type lambda?
 (define (is-lambda? expr)
   (match (typecheck-expr expr)
-    [`(,t1 ..1 -> ,t2)
+    [`(,t1 -> ,t2)
      #t]
     [_
      #f]))
@@ -106,9 +107,11 @@
      (random-ref (list 'true 'false))]
     ['ntype
      'null]
-    [`(,(? type? t1) ..1 -> ,(? type? t2))
+    [`(,t1 -> ,(? type? t2))
      `(lambda (,@(map (λ (t_)
-                        `(,(gensym) : ,t_))
+                        (if (type? t_)
+                            `(,(gensym) : ,t_)
+                            (error 'gen-term-w-type "not a valid type ~v" t_)))
                       t1)) ,(gen-term-w-type t2))]
     [else
      (error 'gen-term-w-type "not a valid type ~v" t)]))

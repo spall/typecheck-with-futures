@@ -4,10 +4,12 @@
          typecheck-sequential
          naive-typecheck-parallel
          better-typecheck-parallel
+         places-typecheck-parallel
          type?)
 (require (rename-in racket/unsafe/ops
                     [unsafe-car ucar]
-                    [unsafe-cdr ucdr]))
+                    [unsafe-cdr ucdr])
+         "performance.rkt")
 #| http://www.cs.cornell.edu/courses/cs6110/2013sp/lectures/lec25-sp13.pdf
 
    Simply-typed lambda calculus
@@ -26,14 +28,14 @@
     [(or 'int 'bool 'ntype)
      #t]
     [`(,t1 -> ,t2)
-     (and (type? t1) (type? t2))]
+     (and (andmap1 type? t1) (type? t2))]
     [_
      #f]))
 
 (define (type-equal? t1 t2)
   (match* (t1 t2)
     [(`(,t1_ -> ,t2_) `(,t1__ -> ,t2__))
-     (and (type-equal? t1_ t1__) (type-equal? t2_ t2__))]
+     (and (andmap2 type-equal? t1_ t1__) (type-equal? t2_ t2__))]
      [('int 'int)
       #t]
      [('bool 'bool)
@@ -42,6 +44,14 @@
       #t]
      [(_ _)
       #f]))
+
+(define (andmap1 proc l1)
+  (cond
+    [(empty? l1)
+     #t]
+    [else
+     (and (proc (ucar l1))
+          (andmap1 proc (ucdr l1)))]))
 
 (define (andmap2 proc l1 l2)
   (cond
@@ -65,6 +75,10 @@
     [else
      (foldl2 proc (proc (ucar l1) (ucar l2) init) (ucdr l1) (ucdr l2))]))
 
+;; from  2,764,194,400 bytes allocated in the heap
+;; to  1,680,458,704 bytes allocated in the heap
+;; to 910,630,272 bytes allocated in the heap
+
 (define (typecheck expr tenv)
   (match expr
     [(? exact-integer? n)
@@ -75,31 +89,29 @@
      'ntype]
     [(? symbol? x)
      (tenv x)]
-    [`(begin ,expr ..1) ;; 
+    [`(begin . ,expr) ;; `(begin ,expr ..1) to `(begin . ,expr) from 2,209,902,840 bytes allocated in the heap to 2,064,695,672 bytes allocated in the heap 
      (foldl1 (λ (e init)
                (typecheck e tenv))
              #f expr)]
-    [`(lambda ((,(? symbol? x) : ,(? type? t)) ..1) ,body)
-     ;;`(lambda (,@(list `(,(? symbol? x) : ,(? type? t)) ..1)) ,body)
-     ;;`(lambda ((,(? symbol? x) : ,(? type? t)) ..1) ,body)
-     (let ([new-tenv (foldl2 (lambda (arg type tenv_)
-                               (lambda (z)
-                                 (if (eq? z arg)
-                                     type
+    [`(lambda ,args ,body)
+     (let ([new-tenv (foldl1 (λ (arg tenv_)
+                               (λ (z) ;; destruct arg.
+                                 (if (eq? z (car arg))
+                                     (caddr arg)
                                      (tenv_ z))))
-                             tenv x t)])
-       `(,@t  -> ,(typecheck body new-tenv)))]
-    [`(,e1 ,e2 ..1)
+                             tenv args)])
+       `(,(map caddr args) -> ,(typecheck body new-tenv)))]
+    [`(,e1 . ,e2) ;; `(,e1 ,e2 ..1) => `(,e1 . ,e2) went from 2,064,695,672 bytes allocated in the heap to 1,683,298,584 bytes allocated in the heap 
      (match (typecheck e1 tenv)
-       [`(,t1 ..1 -> ,t2)
-        (if (andmap2 (lambda (t_ e_) 
-                      (type-equal? t_ (typecheck e_ tenv)))
-                    t1 e2)
+       [`(,t1 -> ,t2) ;; represent types differently.
+        (if (andmap2 (lambda (t_ e_)
+                       (type-equal? t_ (typecheck e_ tenv)))
+                     t1 e2)
             t2
             (error 'typecheck "no type: ~a~n" expr))]
        [else
         (error 'typecheck "no type ~a~n" expr)])]
-    [else
+    [else  ;; i think the previous expression will capture some of the "else" as well
      (error 'typecheck "bad form: ~a" expr)]))
 
 (define (typecheck-expr expr)
@@ -129,10 +141,28 @@
                                    (min len (* (+ 1 pc) seq-size)))])
                  (typecheck-expr e)))))))
 
-;; (list-rest a b c) == (list a b c ...)
-;; 
+;; places
 
-;; deal with stack overflow, make tail recursive?
+(define (places-typecheck-parallel exprs)
+  (define pcount (processor-count))
+  (define len (vector-length exprs))
+  (define seq-size (ceiling (/ len pcount)))
+
+  (for-each
+   place-channel-get
+   (for/list ([pc (in-range (min pcount len))])
+     (define p (place ch
+                      (define results (time (for/list ([e (place-channel-get ch)])
+                                        (typecheck-expr e))))
+                      (place-channel-put ch results)))
+     (place-channel-put p
+                        (vector-copy exprs
+                                     (* pc seq-size)
+                                     (min len (* (+ 1 pc) seq-size))))
+     p)))
+
+                        
+
 
   
 
@@ -153,3 +183,4 @@
 
  next week global data strucutre type environment.
 |#
+
