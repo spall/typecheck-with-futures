@@ -27,39 +27,50 @@
   (match t
     [(or 'int 'bool 'ntype)
      #t]
-    [`(,t1 -> ,t2)
-     (and (andmap1 type? t1) (type? t2))]
+    [ls  ;; `(,t1 -> ,t2)   turn to `(result params)
+     (if (and (not (list? ls)) (empty? (cdr ls)))
+         #f
+         (and (andmap1 type? (ucdr ls)) (type? (ucar ls))))]
     [_
      #f]))
 
 (define (type-equal? t1 t2)
   (match* (t1 t2)
-    [(`(,t1_ -> ,t2_) `(,t1__ -> ,t2__))
-     (and (andmap2 type-equal? t1_ t1__) (type-equal? t2_ t2__))]
-     [('int 'int)
-      #t]
-     [('bool 'bool)
-      #t]
-     [('ntype 'ntype)
-      #t]
-     [(_ _)
-      #f]))
+    [('int 'int)
+     #t]
+    [('bool 'bool)
+     #t]
+    [('ntype 'ntype)
+     #t]
+    [(ls1 ls2)    ;;(`(,t1_ -> ,t2_) `(,t1__ -> ,t2__))
+     (if (and (not (and (list? ls1) (list? ls2)))
+              (empty? (cdr ls1))
+              (empty? (cdr ls2)))
+         #f
+         (and (andmap2 type-equal? (ucdr ls1) (ucdr ls2))
+              (type-equal? (ucar ls1) (ucar ls2))))]
+    [(_ _)
+     #f]))
 
 (define (andmap1 proc l1)
   (cond
     [(empty? l1)
      #t]
+    [(proc (ucar l1))
+     (andmap1 proc (ucdr l1))]
     [else
-     (and (proc (ucar l1))
-          (andmap1 proc (ucdr l1)))]))
+     #f]))
 
 (define (andmap2 proc l1 l2)
   (cond
     [(and (empty? l1) (empty? l2))
      #t]
+    [(or (empty? l1) (empty? l2))
+     (error 'andmap2 "lists not same length")]
+    [(proc (ucar l1) (ucar l2))
+     (andmap2 proc (ucdr l1) (ucdr l2))]
     [else
-     (and (proc (ucar l1) (ucar l2))
-          (andmap2 proc (ucdr l1) (ucdr l2)))]))
+     #f]))
 
 (define (foldl1 proc init l1)
   (cond
@@ -72,6 +83,8 @@
   (cond
     [(and (empty? l1) (empty? l2))
      init]
+    [(or (empty? l1) (empty? l2))
+     (error 'foldl2 "lists not same length")]
     [else
      (foldl2 proc (proc (ucar l1) (ucar l2) init) (ucdr l1) (ucdr l2))]))
 
@@ -96,26 +109,32 @@
     [`(lambda ,args ,body)
      (let ([new-tenv (foldl1 (λ (arg tenv_)
                                (λ (z) ;; destruct arg.
-                                 (if (eq? z (car arg))
+                                 (if (eq? z (ucar arg))
                                      (caddr arg)
                                      (tenv_ z))))
                              tenv args)])
-       `(,(map caddr args) -> ,(typecheck body new-tenv)))]
+       (cons (typecheck body new-tenv) (map caddr args)))]
     [`(,e1 . ,e2) ;; `(,e1 ,e2 ..1) => `(,e1 . ,e2) went from 2,064,695,672 bytes allocated in the heap to 1,683,298,584 bytes allocated in the heap 
      (match (typecheck e1 tenv)
-       [`(,t1 -> ,t2) ;; represent types differently.
-        (if (andmap2 (lambda (t_ e_)
-                       (type-equal? t_ (typecheck e_ tenv)))
-                     t1 e2)
-            t2
-            (error 'typecheck "no type: ~a~n" expr))]
+       [ls;;`(,t1 -> ,t2) ;; represent types differently.
+        (if (and (not (list? ls)) (empty? (cdr ls)))
+            (error 'typecheck "no type ~a~n" expr)
+            (if (andmap2 (lambda (t_ e_)
+                           (type-equal? t_ (typecheck e_ tenv)))
+                         (ucdr ls) e2)
+                (ucar ls)
+                (error 'typecheck "no type: ~a~n" expr)))]
        [else
         (error 'typecheck "no type ~a~n" expr)])]
     [else  ;; i think the previous expression will capture some of the "else" as well
      (error 'typecheck "bad form: ~a" expr)]))
 
 (define (typecheck-expr expr)
-  (typecheck expr empty-env))
+ ;; (typecheck expr empty-env))
+  (dump-memory-stats)
+  (typecheck expr empty-env)
+  (dump-memory-stats))
+;;  (dump-memory-stats (typecheck expr empty-env)))
 
 (define (typecheck-sequential exprs)
   (void

@@ -23,7 +23,8 @@
       [(= rand 1)
        'bool]
       [else
-       `(,(list (gen-type)) -> ,(gen-type))])))
+       (cons (gen-type) (list (gen-type)))])))
+     ;;  `(,(list (gen-type)) -> ,(gen-type))])))
 
 (define (gen-prim-value)
   (let ([rand (random 3)])
@@ -93,8 +94,8 @@
 ;; expr has type lambda?
 (define (is-lambda? expr)
   (match (typecheck-expr expr)
-    [`(,t1 -> ,t2)
-     #t]
+    [ls ;;`(,t1 -> ,t2)
+     (list? ls)]
     [_
      #f]))
     
@@ -107,12 +108,14 @@
      (random-ref (list 'true 'false))]
     ['ntype
      'null]
-    [`(,t1 -> ,(? type? t2))
-     `(lambda (,@(map (λ (t_)
-                        (if (type? t_)
-                            `(,(gensym) : ,t_)
-                            (error 'gen-term-w-type "not a valid type ~v" t_)))
-                      t1)) ,(gen-term-w-type t2))]
+    [ls   ;;`(,t1 -> ,(? type? t2))
+     (if (not (list? ls))
+         (error 'gen-term-w-type "not a valid type ~v" t)
+         `(lambda (,@(map (λ (t_)
+                            (if (type? t_)
+                                `(,(gensym) : ,t_)
+                                (error 'gen-term-w-type "not a valid type ~v" t_)))
+                          (cdr ls))) ,(gen-term-w-type (car ls))))]
     [else
      (error 'gen-term-w-type "not a valid type ~v" t)]))
 
@@ -122,7 +125,7 @@
   (define argnum (floor (/ size depth)))
   (gen-term depth argnum '()))
 
-(random-seed 1)
+;;(random-seed 1)
 
 (define (gen-well-formed-sexp depth arg-num)
   (let ([lam (gen-lambda depth arg-num '())])
