@@ -37,8 +37,8 @@
        'false])))
 
 (define (gen-begin size ls)
-  `(begin ,@(for/list ([_ (in-range size)])
-              (gen-prim-value))))
+  `(begin ,(for/vector ([_ (in-range size)])
+             (gen-prim-value))))
 
 (define (gen-term depth arg-num ls)
   (cond

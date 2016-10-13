@@ -66,10 +66,9 @@
      'ntype]
     [(? symbol? x)
      (tenv x)]
-    [`(begin . ,expr)
-     (foldl (λ (e init)
-               (typecheck e tenv))
-             #f expr)]
+    [`(begin ,expr)
+     (for/last ([e (in-vector expr)])
+       (typecheck e tenv))]
     [`(lambda ,args ,body)
      (let ([new-tenv (foldl (λ (arg tenv_)
                                (λ (z) ;; destruct arg.
@@ -96,9 +95,9 @@
 
 (define (typecheck-expr expr)
  ;; (typecheck expr empty-env))
-  (dump-memory-stats)
-  (typecheck expr empty-env)
-  (dump-memory-stats))
+;;  (dump-memory-stats)
+  (typecheck expr empty-env))
+  ;;(dump-memory-stats))
 ;;  (dump-memory-stats (typecheck expr empty-env)))
 
 (define (typecheck-sequential exprs)
