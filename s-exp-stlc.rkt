@@ -70,14 +70,15 @@
      (for/last ([e (in-vector expr)])
        (typecheck e tenv))]
     [`(lambda ,args ,body)
-     (let ([new-tenv (foldl (λ (arg tenv_)
-                               (λ (z) ;; destruct arg.
-                                 (if (eq? z (ucar arg))
-                                     (ucar (ucdr (ucdr arg)))
-                                     (tenv_ z))))
-                             tenv args)])
+     (let ([new-tenv (for/fold ([tenv_ tenv])
+                               ([arg (in-vector args)])
+                       (λ (z) 
+                         (if (eq? z (ucar arg))
+                             (ucar (ucdr (ucdr arg)))
+                             (tenv_ z))))])
        (cons (typecheck body new-tenv)
-             (map (λ (a) (ucar (ucdr (ucdr a)))) args)))]
+             (for/list ([a (in-vector args)])
+               (ucar (ucdr (ucdr a))))))]
     [`(,e1 . ,e2) ;; `(,e1 ,e2 ..1) => `(,e1 . ,e2) went from 2,064,695,672 bytes allocated in the heap to 1,683,298,584 bytes allocated in the heap 
      (match (typecheck e1 tenv)
        [ls;;`(,t1 -> ,t2) ;; represent types differently.

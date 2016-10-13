@@ -62,9 +62,9 @@
                 (gensym))]
         [types (for/list ([_ (in-range arg-num)])
                  (gen-type))])
-    `(lambda (,@(map (λ (a t)
-                       `(,a : ,t))
-                     args types))
+    `(lambda ,(for/vector ([a (in-list args)]
+                           [t (in-list types)])
+                `(,a : ,t))
        ,(if (<= depth 1)
             (gen-begin 20 ls) ;; 20 is random
             (gen-lambda (sub1 depth) arg-num (cons args ls))))))
@@ -73,7 +73,8 @@
 (define (gen-parameters lam)
   (match lam
     [`(lambda ,args ,body)
-     (define t1 (map caddr args))
+     (define t1 (for/list ([a (in-vector args)])
+                  (caddr a)))
      (if (is-lambda? body)
          (cons (map gen-term-w-type t1)
                (gen-parameters body))
@@ -111,11 +112,11 @@
     [ls   ;;`(,t1 -> ,(? type? t2))
      (if (not (list? ls))
          (error 'gen-term-w-type "not a valid type ~v" t)
-         `(lambda (,@(map (λ (t_)
-                            (if (type? t_)
-                                `(,(gensym) : ,t_)
-                                (error 'gen-term-w-type "not a valid type ~v" t_)))
-                          (cdr ls))) ,(gen-term-w-type (car ls))))]
+         `(lambda ,(for/vector ([t_ (in-list (cdr ls))])
+                     (if (type? t_)
+                         `(,(gensym) : ,t_)
+                         (error 'gen-term-w-type "not a valid type ~v" t_)))
+            ,(gen-term-w-type (car ls))))]
     [else
      (error 'gen-term-w-type "not a valid type ~v" t)]))
 
