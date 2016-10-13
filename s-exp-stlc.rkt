@@ -30,7 +30,7 @@
     [ls  ;; `(,t1 -> ,t2)   turn to `(result params)
      (if (and (not (list? ls)) (empty? (cdr ls)))
          #f
-         (and (andmap1 type? (ucdr ls)) (type? (ucar ls))))]
+         (and (andmap type? (ucdr ls)) (type? (ucar ls))))]
     [_
      #f]))
 
@@ -47,46 +47,10 @@
               (empty? (cdr ls1))
               (empty? (cdr ls2)))
          #f
-         (and (andmap2 type-equal? (ucdr ls1) (ucdr ls2))
+         (and (andmap type-equal? (ucdr ls1) (ucdr ls2))
               (type-equal? (ucar ls1) (ucar ls2))))]
     [(_ _)
      #f]))
-
-(define (andmap1 proc l1)
-  (cond
-    [(empty? l1)
-     #t]
-    [(proc (ucar l1))
-     (andmap1 proc (ucdr l1))]
-    [else
-     #f]))
-
-(define (andmap2 proc l1 l2)
-  (cond
-    [(and (empty? l1) (empty? l2))
-     #t]
-    [(or (empty? l1) (empty? l2))
-     (error 'andmap2 "lists not same length")]
-    [(proc (ucar l1) (ucar l2))
-     (andmap2 proc (ucdr l1) (ucdr l2))]
-    [else
-     #f]))
-
-(define (foldl1 proc init l1)
-  (cond
-    [(empty? l1)
-     init]
-    [else
-     (foldl1 proc (proc (ucar l1) init) (ucdr l1))]))
-
-(define (foldl2 proc init l1 l2)
-  (cond
-    [(and (empty? l1) (empty? l2))
-     init]
-    [(or (empty? l1) (empty? l2))
-     (error 'foldl2 "lists not same length")]
-    [else
-     (foldl2 proc (proc (ucar l1) (ucar l2) init) (ucdr l1) (ucdr l2))]))
 
 ;; from  2,764,194,400 bytes allocated in the heap
 ;; to  1,680,458,704 bytes allocated in the heap
@@ -102,24 +66,25 @@
      'ntype]
     [(? symbol? x)
      (tenv x)]
-    [`(begin . ,expr) ;; `(begin ,expr ..1) to `(begin . ,expr) from 2,209,902,840 bytes allocated in the heap to 2,064,695,672 bytes allocated in the heap 
-     (foldl1 (λ (e init)
+    [`(begin . ,expr)
+     (foldl (λ (e init)
                (typecheck e tenv))
              #f expr)]
     [`(lambda ,args ,body)
-     (let ([new-tenv (foldl1 (λ (arg tenv_)
+     (let ([new-tenv (foldl (λ (arg tenv_)
                                (λ (z) ;; destruct arg.
                                  (if (eq? z (ucar arg))
-                                     (caddr arg)
+                                     (ucar (ucdr (ucdr arg)))
                                      (tenv_ z))))
                              tenv args)])
-       (cons (typecheck body new-tenv) (map caddr args)))]
+       (cons (typecheck body new-tenv)
+             (map (λ (a) (ucar (ucdr (ucdr a)))) args)))]
     [`(,e1 . ,e2) ;; `(,e1 ,e2 ..1) => `(,e1 . ,e2) went from 2,064,695,672 bytes allocated in the heap to 1,683,298,584 bytes allocated in the heap 
      (match (typecheck e1 tenv)
        [ls;;`(,t1 -> ,t2) ;; represent types differently.
         (if (and (not (list? ls)) (empty? (cdr ls)))
             (error 'typecheck "no type ~a~n" expr)
-            (if (andmap2 (lambda (t_ e_)
+            (if (andmap (lambda (t_ e_)
                            (type-equal? t_ (typecheck e_ tenv)))
                          (ucdr ls) e2)
                 (ucar ls)
