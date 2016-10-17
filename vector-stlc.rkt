@@ -9,7 +9,14 @@
 
 (require (rename-in racket/unsafe/ops
                     [unsafe-car ucar]
-                    [unsafe-cdr ucdr]))
+                    [unsafe-cdr ucdr]
+                    [unsafe-vector-length uvec-len]
+                    [unsafe-vector-ref uref]
+                    [unsafe-vector-set! uset!])
+         (rename-in racket/fixnum
+                    [fx< i<]
+                    [fx+ i+]
+                    [fx- i-]))
 ;; language
 
 #|
@@ -36,9 +43,9 @@
 
 
 (define (safe-vref v pos)
-  (define size (vector-length v))
-  (if (< pos size)
-      (vector-ref v pos)
+  (define size (uvec-len v))
+  (if (i< pos size)
+      (uref v pos)
       #f))
 
 (define empty-env '()) ;; use a different representation
@@ -57,83 +64,83 @@
 
                  
 (define (type? v pos)
-  (define tag (vector-ref v pos))
+  (define tag (uref v pos))
   
   (cond
     [(eq? 'int tag)
-     (values #t (add1 pos))]
+     (values #t (i+ 1 pos))]
     [(eq? 'bool tag)
-     (values #t (add1 pos))]
+     (values #t (i+ 1 pos))]
     [(eq? 'ntype tag)
-     (values #t (add1 pos))]
+     (values #t (i+ 1 pos))]
     [(eq? 'lamt tag)
-     (let ([count (vector-ref v (add1 pos))])
+     (let ([count (uref v (i+ 1 pos))])
        (if (or (not count)
-               (< (+ 1 count) 2))
-           (values #f (add1 pos))
-           (let loop ([count (+ 1 count)]
-                      [pos (+ 2 pos)]) 
+               (i< (i+ 1 count) 2))
+           (values #f (i+ 1 pos))
+           (let loop ([count (i+ 1 count)]
+                      [pos (i+ 2 pos)]) 
              (cond
-               [(< count 1)
+               [(i< count 1)
                 (values #t pos)]
                [else
                 (let-values ([(t? npos) (type? v pos)])
                   (if t?
                       (loop (sub1 count)
                             npos)
-                      (values #f (add1 pos))))]))))]
+                      (values #f (i+ 1 pos))))]))))]
     [else
-     (values #f (add1 pos))]))
+     (values #f (i+ 1 pos))]))
 
 (define (type-equal? v1 pos1 v2 pos2)
-  (define tag1 (vector-ref v1 pos1))
-  (define tag2 (vector-ref v2 pos2))
+  (define tag1 (uref v1 pos1))
+  (define tag2 (uref v2 pos2))
   
   (cond
     [(and (eq? 'int tag1)
           (eq? 'int tag2))
-     (values #t (add1 pos1) (add1 pos2))]
+     (values #t (i+ 1 pos1) (i+ 1 pos2))]
     [(and (eq? 'bool tag1)
           (eq? 'bool tag2))
-     (values #t (add1 pos1) (add1 pos2))]
+     (values #t (i+ 1 pos1) (i+ 1 pos2))]
     [(and (eq? 'ntype tag1)
           (eq? 'ntype tag2))
-     (values #t (add1 pos1) (add1 pos2))]
+     (values #t (i+ 1 pos1) (i+ 1 pos2))]
     [(and (eq? 'lamt tag1)
           (eq? 'lamt tag2)) ;; are counts the same?
-     (let ([count1 (vector-ref v1 (add1 pos1))]
-           [count2 (vector-ref v2 (add1 pos2))])
+     (let ([count1 (uref v1 (i+ 1 pos1))]
+           [count2 (uref v2 (i+ 1 pos2))])
        (if (or (not count1)
                (not count2)
-               (not (eqv? (add1 count1) (add1 count2)))
-               (< (add1 count1) 2))
-           (values #f (add1 pos1) (add1 pos2))
-           (let loop ([count (add1 count1)]
-                      [pos1 (+ 2 pos1)]
-                      [pos2 (+ 2 pos2)])
+               (not (eqv? (i+ 1 count1) (i+ 1 count2)))
+               (i< (i+ 1 count1) 2))
+           (values #f (i+ 1 pos1) (i+ 1 pos2))
+           (let loop ([count (i+ 1 count1)]
+                      [pos1 (i+ 2 pos1)]
+                      [pos2 (i+ 2 pos2)])
              (cond
-               [(< count 1)
+               [(i< count 1)
                 (values #t pos1 pos2)]
                [else
                 (let-values ([(t? npos1 npos2) (type-equal? v1 pos1 v2 pos2)])
                   (if t?
                       (loop (sub1 count) npos1 npos2)
-                      (values #f (add1 pos1) (add1 pos2))))]))))]
+                      (values #f (i+ 1 pos1) (i+ 1 pos2))))]))))]
     [else
-     (values #f (add1 pos1) (add1 pos2))]))
+     (values #f (i+ 1 pos1) (i+ 1 pos2))]))
 
 (define (helper v start)
-  (define tag (vector-ref v start))
+  (define tag (uref v start))
   (cond
     [(eq? 'lamt tag)
-     (let ([count (vector-ref v (add1 start))])
+     (let ([count (uref v (i+ 1 start))])
        (if (or (not count)
-               (< (+ 1 count) 2))
+               (i< (i+ 1 count) 2))
            (error 'helper "not a type")
-           (let loop ([count (+ 1 count)]
-                      [pos (+ 2 start)])
+           (let loop ([count (i+ 1 count)]
+                      [pos (i+ 2 start)])
              (cond
-               [(< count 1)
+               [(i< count 1)
                 pos]
                [else
                 (let-values ([(t? npos) (type? v pos)])
@@ -147,23 +154,23 @@
 
 ;; returns a new vector with just the type in it
 (define (get-type v pos)
-  (define tag (vector-ref v pos))
+  (define tag (uref v pos))
   (cond
     [(or (eq? 'int tag) (eq? 'bool tag) (eq? 'ntype tag))
-     (values (vector tag) (add1 pos))]
+     (values (vector tag) (i+ 1 pos))]
     [(eq? 'lamt tag)
-     (let ([count (vector-ref v (add1 pos))])
+     (let ([count (uref v (i+ 1 pos))])
        (if (or (not count)
-               (< (+ 1 count) 2))
+               (i< (i+ 1 count) 2))
            (error 'get-type "not a type")
-           (let ([ntype (make-vector (- (helper v pos) pos))])
-             (vector-set! ntype 0 'lamt)
-             (vector-set! ntype 1 count)
-             (let loop ([count (+ 1 count)]
-                        [pos (+ 2 pos)]
+           (let ([ntype (make-vector (i- (helper v pos) pos))])
+             (uset! ntype 0 'lamt)
+             (uset! ntype 1 count)
+             (let loop ([count (i+ 1 count)]
+                        [pos (i+ 2 pos)]
                         [ntpos 2]) 
                (cond
-                 [(< count 1)
+                 [(i< count 1)
                   (values ntype pos)]
                  [else
                   (let-values ([(t? npos) (type? v pos)])
@@ -172,41 +179,41 @@
                           (vector-copy! ntype ntpos v pos npos)
                                (loop (sub1 count)
                                      npos
-                                     (+ ntpos (- npos pos))))
+                                     (i+ ntpos (i- npos pos))))
                         (error 'get-type "not a type")))]))
              )))]
     [else
      (error 'get-type "not a type")]))
 
 (define (typecheck expr pos tenv)
-  (define tag (vector-ref expr pos))
+  (define tag (uref expr pos))
 
   (cond
     [(exact-integer? tag)
-     (values (vector 'int) (add1 pos))]
+     (values (vector 'int) (i+ 1 pos))]
     [(or (eq? 'true tag) (eq? 'false tag))
-     (values (vector 'bool) (add1 pos))]
+     (values (vector 'bool) (i+ 1 pos))]
     [(eq? 'null tag)
-     (values (vector 'ntype) (add1 pos))]
+     (values (vector 'ntype) (i+ 1 pos))]
     [(eq? 'begin tag)
-     (let ([count (vector-ref expr (add1 pos))])
+     (let ([count (uref expr (i+ 1 pos))])
        (if (not count)
            (error 'typecheck "bad form: ~a" expr)
            (for/fold ([res #f]
-                      [p (+ 2 pos)])
+                      [p (i+ 2 pos)])
                      ([_ (in-range count)])
              (typecheck expr p tenv))))]
     [(eq? 'lambda tag) ;; 'lamt n pt_1 pt_2 ... pt_n body_type
-     (let ([count (vector-ref expr (add1 pos))])
+     (let ([count (uref expr (i+ 1 pos))])
        (if (not count)
            (error 'typecheck "bad form: ~a" expr)
            (let*-values ([(new-tenv npos atypes)
                           (for/fold ([tenv_ tenv]
-                                     [p (+ 2 pos)]
+                                     [p (i+ 2 pos)]
                                      [tv (vector)])
                                     ([_ (in-range count)])        ;; extend env
-                            (let-values ([(sym) (vector-ref expr p)]
-                                         [(type npos) (get-type expr (add1 p))])
+                            (let-values ([(sym) (uref expr p)]
+                                         [(type npos) (get-type expr (i+ 1 p))])
                               (values (extend-env tenv_ sym type)
                                       npos
                                       (vector-append tv type))))]
@@ -215,17 +222,17 @@
                                     tbody)
                      npos2))))]
     [(eq? 'app tag)
-     (let*-values ([(lamt npos) (typecheck expr (add1 pos) tenv)]
-                   [(arg_num) (vector-ref expr npos)])
+     (let*-values ([(lamt npos) (typecheck expr (i+ 1 pos) tenv)]
+                   [(arg_num) (uref expr npos)])
        (cond
-         [(not (eq? (vector-ref lamt 0) 'lamt))
+         [(not (eq? (uref lamt 0) 'lamt))
           (error 'typecheck "no type ~a~n" expr)]
            ;; check params of lamt against args types. for loop here or something
-         [else (let-values ([(b lampos_ npos) (let loop ([npos (add1 npos)]
+         [else (let-values ([(b lampos_ npos) (let loop ([npos (i+ 1 npos)]
                                                          [lamtpos 2]
                                                          [count arg_num])
                                                 (cond
-                                                  [(< count 1) (values #t lamtpos npos)]
+                                                  [(i< count 1) (values #t lamtpos npos)]
                                                   [else
                                                    (let*-values ([(t_ np) (typecheck expr npos tenv)]
                                                                 [(pt_ lnp) (get-type lamt lamtpos)]
@@ -239,7 +246,7 @@
                        (values tmp1 npos))
                      (error 'typecheck "no type: ~a~n" expr)))]))]
     [(symbol? tag)
-     (values (apply-env tenv tag) (add1 pos))]
+     (values (apply-env tenv tag) (i+ 1 pos))]
     [else
      (error 'typecheck "bad form: ~a" expr)]))
 
@@ -275,7 +282,7 @@
 
 (define (better-typecheck-parallel exprs)
   (define pcount (processor-count))
-  (define len (vector-length exprs))
+  (define len (uvec-len exprs))
   (define seq-size (ceiling (/ len pcount)))
   
   (for-each
@@ -283,5 +290,5 @@
    (for/list ([pc (in-range (min pcount len))])
      (future (λ ()
                (for ([e (in-vector exprs (* pc seq-size)
-                                   (min len (* (+ 1 pc) seq-size)))])
+                                   (min len (* (i+ 1 pc) seq-size)))])
                  (typecheck-expr e)))))))
