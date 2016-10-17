@@ -1,7 +1,11 @@
 #lang racket
 
 (provide type?
-         type-equal?)
+         type-equal?
+         typecheck-expr
+         typecheck-sequential
+         naive-typecheck-parallel
+         better-typecheck-parallel)
 
 (require (rename-in racket/unsafe/ops
                     [unsafe-car ucar]
@@ -53,7 +57,7 @@
 
                  
 (define (type? v pos)
-  (define tag (safe-vref v pos))
+  (define tag (vector-ref v pos))
   
   (cond
     [(eq? 'int tag)
@@ -63,7 +67,7 @@
     [(eq? 'ntype tag)
      (values #t (add1 pos))]
     [(eq? 'lamt tag)
-     (let ([count (safe-vref v (add1 pos))])
+     (let ([count (vector-ref v (add1 pos))])
        (if (or (not count)
                (< (+ 1 count) 2))
            (values #f (add1 pos))
@@ -82,8 +86,8 @@
      (values #f (add1 pos))]))
 
 (define (type-equal? v1 pos1 v2 pos2)
-  (define tag1 (safe-vref v1 pos1))
-  (define tag2 (safe-vref v2 pos2))
+  (define tag1 (vector-ref v1 pos1))
+  (define tag2 (vector-ref v2 pos2))
   
   (cond
     [(and (eq? 'int tag1)
@@ -97,8 +101,8 @@
      (values #t (add1 pos1) (add1 pos2))]
     [(and (eq? 'lamt tag1)
           (eq? 'lamt tag2)) ;; are counts the same?
-     (let ([count1 (safe-vref v1 (add1 pos1))]
-           [count2 (safe-vref v2 (add1 pos2))])
+     (let ([count1 (vector-ref v1 (add1 pos1))]
+           [count2 (vector-ref v2 (add1 pos2))])
        (if (or (not count1)
                (not count2)
                (not (eqv? (add1 count1) (add1 count2)))
@@ -122,7 +126,7 @@
   (define tag (vector-ref v start))
   (cond
     [(eq? 'lamt tag)
-     (let ([count (safe-vref v (add1 start))])
+     (let ([count (vector-ref v (add1 start))])
        (if (or (not count)
                (< (+ 1 count) 2))
            (error 'helper "not a type")
@@ -148,7 +152,7 @@
     [(or (eq? 'int tag) (eq? 'bool tag) (eq? 'ntype tag))
      (values (vector tag) (add1 pos))]
     [(eq? 'lamt tag)
-     (let ([count (safe-vref v (add1 pos))])
+     (let ([count (vector-ref v (add1 pos))])
        (if (or (not count)
                (< (+ 1 count) 2))
            (error 'get-type "not a type")
@@ -164,7 +168,7 @@
                  [else
                   (let-values ([(t? npos) (type? v pos)])
                     (if t?
-                        (begin (displayln ntype)
+                        (begin
                           (vector-copy! ntype ntpos v pos npos)
                                (loop (sub1 count)
                                      npos
@@ -175,7 +179,7 @@
      (error 'get-type "not a type")]))
 
 (define (typecheck expr pos tenv)
-  (define tag (safe-vref expr pos))
+  (define tag (vector-ref expr pos))
 
   (cond
     [(exact-integer? tag)
@@ -185,7 +189,7 @@
     [(eq? 'null tag)
      (values (vector 'ntype) (add1 pos))]
     [(eq? 'begin tag)
-     (let ([count (safe-vref expr (add1 pos))])
+     (let ([count (vector-ref expr (add1 pos))])
        (if (not count)
            (error 'typecheck "bad form: ~a" expr)
            (for/fold ([res #f]
@@ -193,7 +197,7 @@
                      ([_ (in-range count)])
              (typecheck expr p tenv))))]
     [(eq? 'lambda tag) ;; 'lamt n pt_1 pt_2 ... pt_n body_type
-     (let ([count (safe-vref expr (add1 pos))])
+     (let ([count (vector-ref expr (add1 pos))])
        (if (not count)
            (error 'typecheck "bad form: ~a" expr)
            (let*-values ([(new-tenv npos atypes)
@@ -201,7 +205,7 @@
                                      [p (+ 2 pos)]
                                      [tv (vector)])
                                     ([_ (in-range count)])        ;; extend env
-                            (let-values ([(sym) (safe-vref expr p)]
+                            (let-values ([(sym) (vector-ref expr p)]
                                          [(type npos) (get-type expr (add1 p))])
                               (values (extend-env tenv_ sym type)
                                       npos
@@ -211,26 +215,28 @@
                                     tbody)
                      npos2))))]
     [(eq? 'app tag)
-     (let*-values ([(lamt npos) (typecheck expr (add1 pos))]
-                   [(arg_num) (safe-vref expr (add1 npos))])
+     (let*-values ([(lamt npos) (typecheck expr (add1 pos) tenv)]
+                   [(arg_num) (vector-ref expr npos)])
        (cond
-         [(not (eq? (safe-vref lamt 0) 'lamt))
+         [(not (eq? (vector-ref lamt 0) 'lamt))
           (error 'typecheck "no type ~a~n" expr)]
            ;; check params of lamt against args types. for loop here or something
          [else (let-values ([(b lampos_ npos) (let loop ([npos (add1 npos)]
-                                                         [lamtpos 0]
+                                                         [lamtpos 2]
                                                          [count arg_num])
                                                 (cond
                                                   [(< count 1) (values #t lamtpos npos)]
                                                   [else
-                                                   (let-values ([(t_ np) (typecheck expr npos tenv)]
-                                                                [(pt_ lnp) (get-type lamt lamtpos)])
-                                                     (if (type-equal? pt_
-                                                                      t_)
+                                                   (let*-values ([(t_ np) (typecheck expr npos tenv)]
+                                                                [(pt_ lnp) (get-type lamt lamtpos)]
+                                                                [(bool a b) (type-equal? pt_ 0
+                                                                              t_ 0)])
+                                                     (if bool
                                                          (loop np lnp (sub1 count))
                                                          (values #f lamtpos npos)))]))])
                  (if b
-                     (values (get-type lamt lampos_) npos)
+                     (let-values ([(tmp1 tmp2) (get-type lamt lampos_)])
+                       (values tmp1 npos))
                      (error 'typecheck "no type: ~a~n" expr)))]))]
     [(symbol? tag)
      (values (apply-env tenv tag) (add1 pos))]
@@ -250,7 +256,7 @@
 
 |#
 (define (typecheck-driver expr pos tenv)
-  (let-values ([(type _) (typecheck expr pos tenv)])
+  (let-values ([(type a) (typecheck expr pos tenv)])
     type))
 
 (define (typecheck-expr expr)
