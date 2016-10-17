@@ -1,6 +1,9 @@
 #lang racket
 
-(require "stlc-sexp-gen.rkt")
+(require "stlc-sexp-gen.rkt"
+         "vector-stlc.rkt")
+
+(provide gen-vector-stlc-exprs)
 
 #|
  prim values  b ::= n | true | false | null
@@ -50,14 +53,14 @@
     [(? symbol? x)
      (vector x)]
     [`(begin ,expr)
-     (let* ([vexprs (map sexp->vector expr)]
+     (let* ([vexprs (for/list ([v (in-vector expr)])
+                      (sexp->vector v))]
             [len (length vexprs)])
        (apply vector-append (cons (vector 'begin len) vexprs)))]
     [`(lambda ,args ,body) ;; 'lambda n a+t_1 a+t_2 ... a+t_n body
-     (let* ([vargs (map (λ (a)
-                          (vector-append (vector (car a))
-                                         (sexp-t->vector-t (car (cdr (cdr a))))))
-                        args)]
+     (let* ([vargs (for/list ([a (in-vector args)])
+                     (vector-append (vector (car a))
+                                    (sexp-t->vector-t (car (cdr (cdr a))))))]
             [len (length vargs)])
        (vector-append (apply vector-append (cons (vector 'lambda len)
                                                  vargs))
