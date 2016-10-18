@@ -117,8 +117,7 @@
           (eq? 'lamt tag2)) ;; are counts the same?
      (let ([count1 (uref v1 (i+ 1 pos1))]
            [count2 (uref v2 (i+ 1 pos2))])
-       (if (or (not count1)
-               (not count2)
+       (if (or (not count1) (not count2)
                (not (eqv? (i+ 1 count1) (i+ 1 count2)))
                (i< (i+ 1 count1) 2))
            #f
@@ -135,7 +134,7 @@
     [else
      #f]))
 
-;; probably not this either
+;;  does what?
 (define (helper v start)
   (define tag (uref v start))
   (cond
@@ -168,30 +167,14 @@
      (values (vector tag) (i+ 1 pos))]
     [(eq? 'lamt tag)
      (let ([count (uref v (i+ 1 pos))])
-       (if (or (not count)
-               (i< (i+ 1 count) 2))
+       (if (i< (i+ 1 count) 2)
            (error 'get-type "not a type")
-           (let ([ntype (make-vector (i- (helper v pos) pos))])
+           (let* ([end-pos (helper v pos)]
+                  [ntype (make-vector (i- end-pos pos))])
              (uset! ntype 0 'lamt)
              (uset! ntype 1 count)
-             (let loop4 ([count (i+ 1 count)]
-                        [pos (i+ 2 pos)]
-                        [ntpos 2]
-                        [vec ntype]) 
-               (cond
-                 [(i< count 1)
-                  (values vec pos)]
-                 [else
-                  (let ([npos (type? v pos)])
-                    (if (not npos)
-                        (error 'get-type "not a type")
-                        (begin
-                          (vector-copy! vec ntpos v pos npos)
-                          (loop4 (sub1 count)
-                                 npos
-                                 (i+ ntpos (i- npos pos))
-                                 vec))))]))
-             )))]
+             (vector-copy! ntype 2 v (i+ 2 pos) end-pos)
+             (values ntype end-pos))))]
     [else
      (error 'get-type "not a type")]))
 
