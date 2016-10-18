@@ -74,23 +74,20 @@
    (cond
      [(eq? 'int tag)
       (i+ 1 pos)]
-    ;;  (values #t (i+ 1 pos))]
      [(eq? 'bool tag)
       (i+ 1 pos)]
-    ;; (values #t (i+ 1 pos))]
      [(eq? 'ntype tag)
       (i+ 1 pos)]
-    ;;  (values #t (i+ 1 pos))]
      [(eq? 'lamt tag)
       (let ([count (uref v (i+ 1 pos))])
         (if (or (not count)
                 (i< (i+ 1 count) 2))
-            #f ;;(values #f (i+ 1 pos))
+            #f
             (let loop1 ([count (i+ 1 count)]
                         [pos (i+ 2 pos)]) 
               (cond
                 [(i< count 1)
-                 pos] ;;(values #t pos)]
+                 pos]
                 [else
                  (let ([npos (type? v pos)])
                    (if (not npos)
@@ -98,10 +95,10 @@
                        (loop1 (sub1 count)
                               npos)))]))))]
      [else
-      #f]));; (values #f (i+ 1 pos))]))
+      #f]))
 
 
-;; maybe
+;; return #f or how much we've advanced in 2 vectors
 (define (type-equal? v1 pos1 v2 pos2)
   (define tag1 (uref v1 pos1))
   (define tag2 (uref v2 pos2))
@@ -109,13 +106,13 @@
   (cond
     [(and (eq? 'int tag1)
           (eq? 'int tag2))
-     (values #t (i+ 1 pos1) (i+ 1 pos2))]
+     1]
     [(and (eq? 'bool tag1)
           (eq? 'bool tag2))
-     (values #t (i+ 1 pos1) (i+ 1 pos2))]
+     1]
     [(and (eq? 'ntype tag1)
           (eq? 'ntype tag2))
-     (values #t (i+ 1 pos1) (i+ 1 pos2))]
+     1]
     [(and (eq? 'lamt tag1)
           (eq? 'lamt tag2)) ;; are counts the same?
      (let ([count1 (uref v1 (i+ 1 pos1))]
@@ -124,20 +121,19 @@
                (not count2)
                (not (eqv? (i+ 1 count1) (i+ 1 count2)))
                (i< (i+ 1 count1) 2))
-           (values #f (i+ 1 pos1) (i+ 1 pos2))
+           #f
            (let loop2 ([count (i+ 1 count1)]
-                      [pos1 (i+ 2 pos1)]
-                      [pos2 (i+ 2 pos2)])
+                       [adv 2])
              (cond
                [(i< count 1)
-                (values #t pos1 pos2)]
+                adv]
                [else
-                (let-values ([(t? npos1 npos2) (type-equal? v1 pos1 v2 pos2)])
-                  (if t?
-                      (loop2 (sub1 count) npos1 npos2)
-                      (values #f (i+ 1 pos1) (i+ 1 pos2))))]))))]
+                (let ([adv_ (type-equal? v1 (i+ adv pos1) v2 (i+ adv pos2))])
+                  (if (not adv_)
+                      #f
+                      (loop2 (sub1 count) (i+ adv adv_))))]))))] ;; right?
     [else
-     (values #f (i+ 1 pos1) (i+ 1 pos2))]))
+     #f]))
 
 ;; probably not this either
 (define (helper v start)
@@ -154,7 +150,7 @@
                [(i< count 1)
                 pos]
                [else
-                (let ([npos (type? v pos)]) ;; update here
+                (let ([npos (type? v pos)])
                   (if (not npos)
                       (error 'helper "not a type")
                       (loop3 (sub1 count)
@@ -186,7 +182,7 @@
                  [(i< count 1)
                   (values vec pos)]
                  [else
-                  (let ([npos (type? v pos)]) ;; update here
+                  (let ([npos (type? v pos)])
                     (if (not npos)
                         (error 'get-type "not a type")
                         (begin
@@ -249,11 +245,11 @@
                                        [else
                                         (let*-values ([(t_ np) (typecheck expr npos tenv)]
                                                       [(pt_ lnp) (get-type lamt lamtpos)]
-                                                      [(bool a b) (type-equal? pt_ 0
+                                                      [(adv) (type-equal? pt_ 0 ;; update here?
                                                                                t_ 0)])
-                                          (if bool
-                                              (loop5 np lnp (sub1 count))
-                                              (values #f lamtpos npos)))]))])
+                                          (if (not adv)
+                                              (values #f lamtpos npos)
+                                              (loop5 np lnp (sub1 count))))]))])
                  (if b
                      (let-values ([(tmp1 tmp2) (get-type lamt lampos_)])
                        (values tmp1 npos))
@@ -281,7 +277,7 @@
     type))))
 
 (define (typecheck-expr expr)
-  (typecheck-driver expr 0 empty-env))
+  (time (typecheck-driver expr 0 empty-env)))
 
 (define (typecheck-sequential exprs)
   (void
