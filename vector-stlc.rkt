@@ -42,6 +42,9 @@
 
 |#
 
+;; What about storing more information in the vector, so the typechecker needs to do less
+;; walking?  For example: store start and end index of a type. so i don't have to loop to
+;; find end.
 
 (define (safe-vref v pos)
   (define size (uvec-len v))
@@ -134,21 +137,6 @@
     [else
      #f]))
 
-;; used by get-type
-(define (helper v start)
-  (define count (uref v (i+ 1 start)))
-  (let loop3 ([count (i+ 1 count)]
-              [pos (i+ 2 start)])
-    (cond
-      [(i< count 1)
-       pos]
-      [else
-       (let ([npos (type? v pos)])
-         (if (not npos)
-             (error 'helper "not a type")
-             (loop3 (sub1 count)
-                    npos)))])))
-
 ;; returns pos after end of this type.
 (define (get-type v pos)
   (define tag (uref v pos))
@@ -159,7 +147,17 @@
      (let ([count (uref v (i+ 1 pos))])
        (if (i< (i+ 1 count) 2)
            (error 'get-type "not a type")
-           (helper v pos)))]
+           (let loop3 ([count (i+ 1 count)]
+                       [pos (i+ 2 pos)])
+             (cond
+               [(i< count 1)
+                pos]
+               [else
+                (let ([npos (type? v pos)])
+                  (if (not npos)
+                      (error 'get-type "not a type")
+                      (loop3 (sub1 count)
+                             npos)))]))))]
     [else
      (error 'get-type "not a type")]))
 
@@ -186,44 +184,43 @@
        (uset! out out-pos 'lamt)
        (uset! out (i+ 1 out-pos) count)
        ;; extend env
-       (let*-values ([(new-tenv npos nout-pos)
-                      (for/fold ([tenv_ tenv]
-                                 [p (i+ 2 pos)]
-                                 [tv-pos (i+ 2 out-pos)])
-                                ([_ (in-range count)])
-                        (let* ([sym (uref expr p)]
-                               [npos (get-type expr (i+ 1 p))])
-                          (vector-copy! out tv-pos expr (i+ 1 p) npos)
-                          (values (extend-env tenv_ sym (i+ 1 p) npos expr)
-                                  npos
-                                  (i+ tv-pos (i- npos (i+ 1 p))))))])
-         (typecheck expr npos new-tenv out nout-pos)))]
+       (let loop ([tenv_ tenv]
+                  [p (i+ 2 pos)]
+                  [tv-pos (i+ 2 out-pos)]
+                  [c count])
+         (if (< c 1)
+             (typecheck expr p tenv_ out tv-pos)
+             (let* ([sym (uref expr p)]
+                    [npos (get-type expr (i+ 1 p))])
+               (vector-copy! out tv-pos expr (i+ 1 p) npos)
+               (loop (extend-env tenv_ sym (i+ 1 p) npos expr)
+                     npos
+                     (i+ tv-pos (i- npos (i+ 1 p)))
+                     (i- c 1))))))]
     [(eq? 'app tag)
-     (let*-values ([(lamt) (make-vector (i- (vector-length expr) pos))]
-                   [(npos _) (typecheck expr (i+ 1 pos) tenv lamt 0)]
-                   [(arg_num) (uref expr npos)])
-       (cond
-         [(not (eq? (uref lamt 0) 'lamt))
-          (error 'typecheck "no type ~a~n" expr)]
-         [else (let-values ([(b lampos_ npos)
-                             (let loop5 ([npos (i+ 1 npos)] ;; position in expr
-                                         [lamtpos 2] ;; position in lamt
-                                         [count arg_num]) ;; how many times we loop
-                               (cond
-                                 [(i< count 1) (values #t lamtpos npos)]
-                                 [else
-                                  (let-values ([(np nop) (typecheck expr npos tenv out out-pos)])
-                                    (let ([lnp (get-type lamt lamtpos)]
-                                          [adv (type-equal? lamt lamtpos
-                                                            out out-pos)])
-                                      (if (not adv)
-                                          (values #f lamtpos npos)
-                                          (loop5 np lnp (sub1 count)))))]))])
-                 (if b
-                     (let ([end-body (get-type lamt lampos_)])
-                       (vector-copy! out out-pos lamt lampos_ end-body)
-                       (values npos (i+ out-pos (i- end-body lampos_))))
-                     (error 'typecheck "no type: ~a~n" expr)))]))]
+     (let ([lamt (make-vector (i- (vector-length expr) pos))])
+       (let-values ([(npos _) (typecheck expr (i+ 1 pos) tenv lamt 0)])
+         (let ([arg_num (uref expr npos)])
+           (cond
+             [(not (eq? (uref lamt 0) 'lamt))
+              (error 'typecheck "no type ~a~n" expr)]
+             [else
+              (let loop5 ([npos (i+ 1 npos)] ;; position in expr
+                          [lamtpos 2] ;; position in lamt
+                          [count arg_num]) ;; how many times we loop
+                (cond
+                  [(i< count 1)
+                   (let ([end-body (get-type lamt lamtpos)])
+                     (vector-copy! out out-pos lamt lamtpos end-body)
+                     (values npos (i+ out-pos (i- end-body lamtpos))))]
+                  [else
+                   (let-values ([(np nop) (typecheck expr npos tenv out out-pos)])
+                     (let ([lnp (get-type lamt lamtpos)]
+                           [adv (type-equal? lamt lamtpos
+                                             out out-pos)])
+                       (if (not adv)
+                           (error 'typecheck "no type: ~a~n" expr)
+                           (loop5 np lnp (sub1 count)))))]))]))))]
     [(symbol? tag)
      (let* ([ls (apply-env tenv tag)]
             [start (ucar ls)]
@@ -233,6 +230,13 @@
        (values (i+ 1 pos) (i+ out-pos (i- end start))))]
     [else
      (error 'typecheck "bad form: ~a" expr)]))
+
+
+;; try representing types using own vectors like
+;; #(lam n a #(type) b #(type))
+;; this is like an indirection
+
+
 
 #| vector representation
  1. Can just store b in vector as is
@@ -249,8 +253,8 @@
 (define (typecheck-driver expr pos tenv)
   (define out (make-vector (vector-length expr)))
   (let-values ([(_ __)
-                                      (typecheck expr pos tenv out 0)])
-                          out))
+                (typecheck expr pos tenv out 0)])
+    out))
 #|
   (profile-thunk (thunk (let-values ([(_ __)
                                       (typecheck expr pos tenv out 0)])
