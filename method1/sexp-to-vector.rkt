@@ -60,8 +60,8 @@
     [`(lambda ,args ,body) ;; 'lambda n a+t_1 a+t_2 ... a+t_n body
      (let* ([vargs (for/list ([a (in-vector args)])
                      (vector-append (vector (car a))
-                                  ;;  (vector (car (cdr (cdr a))))))]
-                                    (vector (sexp-t->vector-t (car (cdr (cdr a)))))))]
+                                    (vector (car (cdr (cdr a))))))]
+                                  ;;  (vector (sexp-t->vector-t (car (cdr (cdr a)))))))]
             [len (length vargs)])
        (vector-append (apply vector-append (cons (vector 'lambda len)
                                                  vargs))

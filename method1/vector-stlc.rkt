@@ -64,152 +64,101 @@
     [else
      (apply-env (ucdr env) sym)]))
 
-;; return #f or a pos
-(define (type? v pos)
-   (define tag (uref v pos))
-   
-   (cond
-     [(eq? 'int tag)
-      (i+ 1 pos)]
-     [(eq? 'bool tag)
-      (i+ 1 pos)]
-     [(eq? 'ntype tag)
-      (i+ 1 pos)]
-     [(eq? 'lamt tag)
-      (let ([count (uref v (i+ 1 pos))])
-        (if (or (not count)
-                (i< (i+ 1 count) 2))
-            #f
-            (let loop1 ([count (i+ 1 count)]
-                        [pos (i+ 2 pos)]) 
-              (cond
-                [(i< count 1)
-                 pos]
-                [else
-                 (let ([npos (type? v pos)])
-                   (if (not npos)
-                       #f
-                       (loop1 (sub1 count)
-                              npos)))]))))]
-     [else
-      #f]))
+(define (type? t)
+  (match t
+    [(or 'int 'bool 'ntype)
+     #t]
+    [ls  ;; `(,t1 -> ,t2)   turn to `(result params)
+     (if (or (not (list? ls)) (empty? (cdr ls)))
+         #f
+         (and (andmap type? (ucdr ls)) (type? (ucar ls))))]
+    [_
+     #f]))
+
+(define (lambda-type? t)
+  (and (list? t) (not (empty? (cdr t)))))
 
 
 ;; return #f or how much we've advanced in 2 vectors
-(define (type-equal? v1 pos1 v2 pos2)
-  (define tag1 (uref v1 pos1))
-  (define tag2 (uref v2 pos2))
-  
-  (cond
-    [(and (eq? 'int tag1)
-          (eq? 'int tag2))
-     1]
-    [(and (eq? 'bool tag1)
-          (eq? 'bool tag2))
-     1]
-    [(and (eq? 'ntype tag1)
-          (eq? 'ntype tag2))
-     1]
-    [(and (eq? 'lamt tag1)
-          (eq? 'lamt tag2)) ;; are counts the same?
-     (let ([count1 (uref v1 (i+ 1 pos1))]
-           [count2 (uref v2 (i+ 1 pos2))])
-       
-       (if (or (not count1) (not count2)
-               (not (eqv? (i+ 1 count1) (i+ 1 count2)))
-               (i< (i+ 1 count1) 2))
-           #f
-           (let loop2 ([count (i+ 1 count1)]
-                       [adv 2])
-             (cond
-               [(i< count 1)
-                adv]
-               [else
-                (let ([adv_ (type-equal? (uref v1 (i+ adv pos1)) 0
-                                         (uref v2 (i+ adv pos2)) 0)]);;([adv_ (type-equal? v1 (i+ adv pos1) v2 (i+ adv pos2))])
-                  (if (not adv_)
-                      #f
-                      (loop2 (sub1 count) (i+ adv 1))))]))))] ;; right?
-    [else
+(define (type-equal? t1 t2)
+  (match* (t1 t2)
+    [('int 'int)
+     #t]
+    [('bool 'bool)
+     #t]
+    [('ntype 'ntype)
+     #t]
+    [(ls1 ls2)    ;;(`(,t1_ -> ,t2_) `(,t1__ -> ,t2__))
+     (if (or (not (and (list? ls1) (list? ls2)))
+              (empty? (cdr ls1))
+              (empty? (cdr ls2)))
+         #f
+         (and (andmap type-equal? (ucdr ls1) (ucdr ls2))
+              (type-equal? (ucar ls1) (ucar ls2))))]
+    [(_ _)
      #f]))
 
 ;; typechecker that gathers constraints as it goes and then checks them all at the end.
 
 
-(define (typecheck expr pos tenv out out-pos)
+(define (typecheck expr pos tenv)
   (define tag (uref expr pos))
   (cond
     [(exact-integer? tag)
-     (begin (uset! out out-pos 'int)
-            (values (i+ 1 pos) (i+ 1 out-pos)))]
+     (values (i+ 1 pos) 'int)]
     [(or (eq? 'true tag) (eq? 'false tag))
-     (begin (uset! out out-pos 'bool)
-            (values (i+ 1 pos) (i+ 1 out-pos)))]
+     (values (i+ 1 pos) 'bool)]
     [(eq? 'null tag)
-     (begin (uset! out out-pos 'ntype)
-            (values (i+ 1 pos) (i+ 1 out-pos)))]
+     (values (i+ 1 pos) 'ntype)]
     [(eq? 'begin tag)
      (let ([count (uref expr (i+ 1 pos))])
        (let loop ([p (i+ 2 pos)]
                   [c count])
          (if (i< c 2)
-             (typecheck expr p tenv out out-pos)
-             (let-values ([(p1 _) (typecheck expr p tenv out out-pos)])
+             (typecheck expr p tenv)
+             (let-values ([(p1 _) (typecheck expr p tenv)])
                (loop p1 (i- c 1))))))]
-    [(eq? 'lambda tag) ;; 'lamt n pt_1 pt_2 ... pt_n body_type
+    [(eq? 'lambda tag)
      (let ([count (uref expr (i+ 1 pos))])
-       (uset! out out-pos 'lamt)
-       (uset! out (i+ 1 out-pos) count)
        ;; extend env
        (let loop ([tenv_ tenv]
                   [p (i+ 2 pos)]
-                  [tv-pos (i+ 2 out-pos)]
-                  [c count])
-         (if (< c 1)
-             (let ([bodyv (make-vector (i- (uvec-len out) tv-pos))]) ;; need to typecheck body and put in a new vector.
-               (let-values ([(tmp1 _) (typecheck expr p tenv_ bodyv 0)])
-                 (uset! out tv-pos bodyv)
-                 (values tmp1 (i+ 1 tv-pos))))
-            ;; (typecheck expr p tenv_ out tv-pos) ;; typecheck body
+                  [c count]
+                  [type '()])
+         (if (< c 1) ;; typecheck body
+             (let-values ([(tmp1 btype) (typecheck expr p tenv_)])
+               (values tmp1 (cons btype (reverse type)))) ;; hmmmmm
              (let* ([sym (uref expr p)]
-                    [atype (uref expr (i+ 1 p))])  ;;   [npos (get-type expr (i+ 1 p))]) ;; replace this
-               (uset! out tv-pos atype)
-             ;;  (vector-copy! out tv-pos expr (i+ 1 p) npos)
+                    [atype (uref expr (i+ 1 p))])
                (loop (extend-env tenv_ sym atype)
                      (i+ 2 p)
-                     (i+ 1 tv-pos)
-                     (i- c 1))))))]
+                     (i- c 1)
+                     (cons atype type))))))]
     [(eq? 'app tag)
-     (let ([lamt (make-vector (i- (uvec-len expr) pos))])
-       (let-values ([(npos _) (typecheck expr (i+ 1 pos) tenv lamt 0)])
+     (let-values ([(npos lamt) (typecheck expr (i+ 1 pos) tenv)])
          (let ([arg_num (uref expr npos)])
            (cond
-             [(not (eq? (uref lamt 0) 'lamt))
+             [(not (lambda-type? lamt))
               (error 'typecheck "no type ~a~n" expr)]
              [else
               (let loop5 ([npos (i+ 1 npos)] ;; position in expr
-                          [lamtpos 2] ;; position in lamt
+                          [lamt^ (cdr lamt)] ;; position in lamt
                           [count arg_num]) ;; how many times we loop
                 (cond
                   [(i< count 1)
-                   (let ([btype (uref lamt lamtpos)])
-                     (vector-copy! out out-pos btype)
-                     (values npos (i+ out-pos (uvec-len btype))))]
+                   (values npos (car lamt))] ;; return body type
                   [else ;; here
-                   (let-values ([(np nop) (typecheck expr npos tenv out out-pos)])
-                     (let* ([ptype (uref lamt lamtpos)]
-                            [adv (type-equal? ptype 0
-                                              out out-pos)])
-                       (if (not adv)
-                           (error 'typecheck "no type: ~a~n" expr)
-                           (loop5 np (i+ 1 lamtpos) (sub1 count)))))]))]))))]
+                   (let-values ([(np atype) (typecheck expr npos tenv)])
+                     (if (type-equal? atype (car lamt^))
+                         (loop5 np (cdr lamt^) (sub1 count))
+                         (error 'typecheck "no type: ~a~n" expr)))]))])))]
     [(symbol? tag)
-     (let ([type (apply-env tenv tag)])
-      ;; (vector-copy! out out-pos type)
-       (vector-copy! out out-pos type)
-       (values (i+ 1 pos) (i+ out-pos 1)))]
+     (values (i+ 1 pos) (apply-env tenv tag))]
     [else
      (error 'typecheck "bad form: ~a" expr)]))
+
+
+;; 
 
 
 ;; try representing types using own vectors like
@@ -231,10 +180,9 @@
 
 |#
 (define (typecheck-driver expr pos tenv)
-  (define out (make-vector (uvec-len expr)))
-  (let-values ([(_ __)
-                (typecheck expr pos tenv out 0)])
-    out))
+  (let-values ([(_ type)
+                (typecheck expr pos tenv)])
+    type))
 #|
   (profile-thunk (thunk (let-values ([(_ __)
                                       (typecheck expr pos tenv out 0)])
