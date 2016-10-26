@@ -1,8 +1,12 @@
 #lang racket
 
-(require "../vector-stlc.rkt")
+(require "../vector-stlc.rkt"
+         (only-in "../../sexp/s-exp-stlc.rkt"
+                  [typecheck-sequential sexp-t-seq]))
+
 (provide time-typechecker
-         time-sequential-typechecker)
+         time-sequential-typechecker
+         compare-to-sexp)
 
 (define (time-typechecker exprs)
   (define ITER 10)
@@ -26,7 +30,7 @@
             (exact->inexact (* 100 (/ (- bavg savg) savg))))))
 
 (define (time-sequential-typechecker exprs)
-  (define ITER 1)
+  (define ITER 10)
   (define list-exprs (list exprs))
   (let*-values ([(ssum gcsum) (for/fold ([ssum_ 0]
                                          [gcsum_ 0])
@@ -38,3 +42,24 @@
     (printf "avg sequential: ~v~n  avg gc: ~v~n"
             (exact->inexact (/ ssum ITER))
             (exact->inexact (/ gcsum ITER)))))
+
+;; 
+(define (compare-to-sexp sexp-exprs vec-exprs)
+  (define ITER 10)
+  (define l-sexp-exprs (list sexp-exprs))
+  (define l-vec-exprs (list vec-exprs))
+  (let*-values ([(ssum vsum) (for/fold ([ssum_ 0][vsum_ 0])
+                                       ([_ (in-range ITER)])
+                               (let-values ([(a b srt gc)
+                                             (time-apply sexp-t-seq l-sexp-exprs)]
+                                            [(c d vrt egc)
+                                             (begin
+                                               (collect-garbage) (collect-garbage) (collect-garbage)
+                                               (time-apply typecheck-sequential l-vec-exprs))])
+                                 (collect-garbage) (collect-garbage) (collect-garbage)
+                                 (values (+ ssum_ srt) (+ vsum_ vrt))))]
+                [(savg) (/ ssum ITER)]
+                [(vavg) (/ vsum ITER)])
+    (printf "vector version: ~v%~n"
+            (exact->inexact (* 100 (/ (- vavg savg) savg))))))
+                                 

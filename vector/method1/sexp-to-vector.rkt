@@ -3,7 +3,9 @@
 (require "../../sexp/stlc-sexp-gen.rkt"
          "vector-stlc.rkt")
 
-(provide gen-vector-stlc-exprs)
+(provide gen-vector-stlc-exprs
+         gen-well-formed-sexp
+         sexp->vector)
 
 #|
  prim values  b ::= n | true | false | null

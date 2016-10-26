@@ -3,7 +3,9 @@
 (require "../sexp/stlc-sexp-gen.rkt"
          "vector-stlc.rkt")
 
-(provide gen-vector-stlc-exprs)
+(provide gen-vector-stlc-exprs
+         gen-well-formed-sexp
+         sexp->vector)
 
 #|
  prim values  b ::= n | true | false | null
@@ -74,7 +76,7 @@
     [else
      (error 'sexp->vector "cannot convert" expr)]))
 
+
 (define (gen-vector-stlc-exprs depth arg-num)
   (define sexp (gen-well-formed-sexp depth arg-num))
   (sexp->vector sexp))
-  ;; convert
