@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../stlc-sexp-gen.rkt"
+(require "../sexp/stlc-sexp-gen.rkt"
          "vector-stlc.rkt")
 
 (provide gen-vector-stlc-exprs)
@@ -37,8 +37,8 @@
     [ls ;; (car ls) goes on end. is body type
      (let* ([vparams (map sexp-t->vector-t (cdr ls))]
             [len (length vparams)])
-       (vector-append (vector 'lamt len) (list->vector vparams)
-                      (vector (sexp-t->vector-t (car ls)))))]
+       (vector-append (apply vector-append (cons (vector 'lamt len) vparams))
+                      (sexp-t->vector-t (car ls))))]
     [else
      (error 'sexp-t->vector-t "cannot conver" type)]))
 
@@ -60,8 +60,7 @@
     [`(lambda ,args ,body) ;; 'lambda n a+t_1 a+t_2 ... a+t_n body
      (let* ([vargs (for/list ([a (in-vector args)])
                      (vector-append (vector (car a))
-                                    (vector (car (cdr (cdr a))))))]
-                                  ;;  (vector (sexp-t->vector-t (car (cdr (cdr a)))))))]
+                                    (sexp-t->vector-t (car (cdr (cdr a))))))]
             [len (length vargs)])
        (vector-append (apply vector-append (cons (vector 'lambda len)
                                                  vargs))

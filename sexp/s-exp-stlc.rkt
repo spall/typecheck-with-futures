@@ -9,7 +9,7 @@
 (require (rename-in racket/unsafe/ops
                     [unsafe-car ucar]
                     [unsafe-cdr ucdr])
-         "performance.rkt")
+         "../performance.rkt")
 #| http://www.cs.cornell.edu/courses/cs6110/2013sp/lectures/lec25-sp13.pdf
 
    Simply-typed lambda calculus

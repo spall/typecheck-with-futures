@@ -1,11 +1,10 @@
 #lang racket
 
 (require "benchmark.rkt"
-         "../stlc-sexp-gen.rkt"
-         future-visualizer)
+         "../sexp/stlc-sexp-gen.rkt")
 
-(define expr (gen-well-formed-sexp 30 100))
-(displayln "expressions size 30/100")
+(define expr (gen-well-formed-sexp 50 400))
+(displayln "expressions size 10/50")
 
 (define 10-exprs (make-vector 10 expr))
 (displayln "10 expressions")
@@ -22,6 +21,7 @@
 (define 200-exprs (make-vector 200 expr))
 (displayln "200 expressions")
 (time-typechecker 200-exprs)
+
 
 (define 400-exprs (make-vector 400 expr))
 (displayln "400 expressions")

@@ -2,7 +2,9 @@
 
 (require "../s-exp-stlc.rkt"
          future-visualizer)
-(provide time-typechecker)
+
+(provide time-typechecker
+         time-sequential-typechecker)
 
 (define (time-typechecker exprs)
   (define ITER 10)
@@ -21,6 +23,21 @@
                 [(savg) (/ ssum ITER)]
                 [(navg) (/ nsum ITER)]
                 [(bavg) (/ bsum ITER)])
-    (printf "naive: ~v%    better: ~v%~n"
-            (exact->inexact (* 100 (/ (- navg savg) savg)))
-            (exact->inexact (* 100 (/ (- bavg savg) savg))))))
+    (if (= 0 savg)
+        (printf "sequential average is zero")
+        (printf "sequential: ~v~n naive: ~v%    better: ~v%~n"
+                (exact->inexact savg)
+                (exact->inexact (* 100 (/ (- navg savg) savg)))
+                (exact->inexact (* 100 (/ (- bavg savg) savg)))))))
+
+(define (time-sequential-typechecker exprs)
+  (define ITER 10)
+  (define list-exprs (list exprs))
+  (let*-values ([(ssum) (for/fold ([ssum_ 0])
+                                  ([_ (in-range ITER)])
+                          (let-values ([(a b srt c)
+                                        (time-apply typecheck-sequential list-exprs)])
+                            (collect-garbage) (collect-garbage) (collect-garbage)
+                            (values (+ ssum_ srt))))])
+    (printf "avg sequential: ~v~n"
+            (exact->inexact (/ ssum ITER)))))

@@ -174,11 +174,19 @@
      (begin (uset! out out-pos 'ntype)
             (values (i+ 1 pos) (i+ 1 out-pos)))]
     [(eq? 'begin tag)
-     (let ([count (uref expr (i+ 1 pos))]) 
+     (let ([count (uref expr (i+ 1 pos))])
+       (let loop ([p (i+ 2 pos)]
+                  [c count])
+         (if (i< c 2)
+             (typecheck expr p tenv out out-pos)
+             (let-values ([(p1 _) (typecheck expr p tenv out out-pos)])
+               (loop p1 (i- c 1))))))]
+    #|
+     (let ([count (uref expr (i+ 1 pos))])
        (for/fold ([p (i+ 2 pos)]
                   [_ out-pos])
                  ([_ (in-range count)])
-         (typecheck expr p tenv out out-pos)))]
+         (typecheck expr p tenv out out-pos)))] |#
     [(eq? 'lambda tag) ;; 'lamt n pt_1 pt_2 ... pt_n body_type
      (let ([count (uref expr (i+ 1 pos))])
        (uset! out out-pos 'lamt)
@@ -198,7 +206,7 @@
                      (i+ tv-pos (i- npos (i+ 1 p)))
                      (i- c 1))))))]
     [(eq? 'app tag)
-     (let ([lamt (make-vector (i- (vector-length expr) pos))])
+     (let ([lamt (make-vector (i- (uvec-len expr) pos))])
        (let-values ([(npos _) (typecheck expr (i+ 1 pos) tenv lamt 0)])
          (let ([arg_num (uref expr npos)])
            (cond
@@ -251,7 +259,7 @@
 
 |#
 (define (typecheck-driver expr pos tenv)
-  (define out (make-vector (vector-length expr)))
+  (define out (make-vector (uvec-len expr)))
   (let-values ([(_ __)
                 (typecheck expr pos tenv out 0)])
     out))

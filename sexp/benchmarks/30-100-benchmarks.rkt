@@ -4,10 +4,8 @@
          "../stlc-sexp-gen.rkt"
          future-visualizer)
 
-;; expressions of size 10/50
-              
-(define expr (gen-well-formed-sexp 10 50))
-(displayln "expressions size 10/50")
+(define expr (gen-well-formed-sexp 30 100))
+(displayln "expressions size 30/100")
 
 (define 10-exprs (make-vector 10 expr))
 (displayln "10 expressions")
