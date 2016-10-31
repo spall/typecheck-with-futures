@@ -7,7 +7,7 @@
 ;; expressions of size 10/50
               
 (define sexp-expr (gen-well-formed-sexp 5 10))
-(define vec-expr (sexp->vector sexp-expr))
+(define-values (vec-expr _) (sexp->vector sexp-expr))
 
 (displayln "expressions size 10/50")
 

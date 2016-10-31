@@ -5,7 +5,7 @@
          future-visualizer)
 
 (define sexp-expr (gen-well-formed-sexp 20 50))
-(define vec-expr (sexp->vector sexp-expr))
+(define-values (vec-expr _) (sexp->vector sexp-expr))
 (displayln "expressions size 20/50")
 
 (define 1-exprs (make-vector 1 sexp-expr))

@@ -13,11 +13,10 @@
                     [unsafe-cdr ucdr]
                     [unsafe-vector-length uvec-len]
                     [unsafe-vector-ref uref]
-                    [unsafe-vector-set! uset!])
-         (rename-in racket/fixnum
-                    [fx< i<]
-                    [fx+ i+]
-                    [fx- i-]))
+                    [unsafe-vector-set! uset!]
+                    [unsafe-fx< i<]
+                    [unsafe-fx+ i+]
+                    [unsafe-fx- i-]))
 ;; language
 
 #|
@@ -76,7 +75,7 @@
      #f]))
 
 (define (lambda-type? t)
-  (and (list? t) (not (empty? (cdr t)))))
+  (and (list? t) (not (empty? (ucdr t)))))
 
 
 ;; return #f or how much we've advanced in 2 vectors
@@ -90,34 +89,97 @@
      #t]
     [(ls1 ls2)    ;;(`(,t1_ -> ,t2_) `(,t1__ -> ,t2__))
      (if (or (not (and (list? ls1) (list? ls2)))
-              (empty? (cdr ls1))
-              (empty? (cdr ls2)))
+              (empty? (ucdr ls1))
+              (empty? (ucdr ls2)))
          #f
          (and (andmap type-equal? (ucdr ls1) (ucdr ls2))
               (type-equal? (ucar ls1) (ucar ls2))))]
     [(_ _)
      #f]))
 
-;; typechecker that gathers constraints as it goes and then checks them all at the end.
+(define (get-len expr pos)
+  (define tag (uref expr pos))
+  (cond
+    [(or (exact-integer? tag)
+         (eq? 'true tag) (eq? 'false tag)
+         (eq? 'null tag))
+     1]
+    [(or (eq? 'begin tag) (eq? 'lambda tag) (eq? 'app tag))
+     (uref expr (i+ 1 pos))]
+    [(symbol? tag)
+     1]
+    [else
+     (error 'get-len "not an expr")]))
 
-
+;; store size of, for instance, lambda, so typecheck doesn't have to return multiple values.
+;; can just add that value to pos when it returns.
 (define (typecheck expr pos tenv)
   (define tag (uref expr pos))
   (cond
     [(exact-integer? tag)
-     (values (i+ 1 pos) 'int)]
+     'int]
     [(or (eq? 'true tag) (eq? 'false tag))
-     (values (i+ 1 pos) 'bool)]
+     'bool]
     [(eq? 'null tag)
-     (values (i+ 1 pos) 'ntype)]
+     'ntype]
     [(eq? 'begin tag)
-     (let ([count (uref expr (i+ 1 pos))])
-       (let loop ([p (i+ 2 pos)]
-                  [c count])
+     (let ([count (uref expr (i+ 2 pos))])
+       (let loop1 ([p (i+ 3 pos)]
+                   [c count])
          (if (i< c 2)
              (typecheck expr p tenv)
-             (let-values ([(p1 _) (typecheck expr p tenv)])
-               (loop p1 (i- c 1))))))]
+             (let ([_ (typecheck expr p tenv)]
+                   [p1 (get-len expr p)])
+               (loop1 p1 (i- c 1))))))]
+    [(eq? 'lambda tag)
+     (let ([count (uref expr (i+ 2 pos))])
+       (let loop ([tenv_ tenv]
+                  [p (i+ 3 pos)]
+                  [c count]
+                  [type '()])
+         (if (< c 1) ;; typecheck body
+             (let ([btype (typecheck expr p tenv_)])
+               (cons btype (reverse type))) ;; hmmmmmm
+             (let* ([sym (uref expr p)]
+                    [atype (uref expr (i+ 1 p))])
+               (loop (extend-env tenv_ sym atype)
+                     (i+ 2 p)
+                     (i- c 1)
+                     (cons atype type))))))]
+    [(eq? 'app tag)
+     (let* ([lamt (typecheck expr (i+ 2 pos) tenv)]
+            [npos (+ (get-len expr (i+ 2 pos)) pos 2)]
+            [arg_num (uref expr npos)])
+       (cond
+         [(not (lambda-type? lamt))
+          (error 'typecheck "no type ~a~n" expr)]
+         [else
+          (let loop5 ([npos (i+ 1 npos)] ;; position in expr
+                      [lamt^ (ucdr lamt)] ;; position in lamt
+                      [count arg_num]) ;; how many times we loop
+            (cond
+              [(i< count 1)
+               (ucar lamt)] ;; return body type
+              [else ;; here
+               (let ([atype (typecheck expr npos tenv)]
+                     [np (+ (get-len expr npos) npos)])
+                 (if (type-equal? atype (ucar lamt^))
+                     (loop5 np (ucdr lamt^) (i- count 1))
+                     (error 'typecheck  "no type: ~a~n" expr)))]))]))]
+    [(symbol? tag)
+     (apply-env tenv tag)]
+    [else
+     (error 'typecheck "bad form: ~a" expr)]))
+
+;; typechecker that gathers constraints as it goes and then checks them all at the end.
+;; optimization
+;; In original typechecker, type lambda, which requires walking over all params.
+;; then walk over that produced type to compare with args.
+;; optimize by creating a specialized typechecker function that does this at same time
+;;(define (typecheck-app lam args count arg_pos)
+  
+  
+  #|
     [(eq? 'lambda tag)
      (let ([count (uref expr (i+ 1 pos))])
        ;; extend env
@@ -134,28 +196,9 @@
                      (i+ 2 p)
                      (i- c 1)
                      (cons atype type))))))]
-    [(eq? 'app tag)
-     (let-values ([(npos lamt) (typecheck expr (i+ 1 pos) tenv)])
-         (let ([arg_num (uref expr npos)])
-           (cond
-             [(not (lambda-type? lamt))
-              (error 'typecheck "no type ~a~n" expr)]
-             [else
-              (let loop5 ([npos (i+ 1 npos)] ;; position in expr
-                          [lamt^ (cdr lamt)] ;; position in lamt
-                          [count arg_num]) ;; how many times we loop
-                (cond
-                  [(i< count 1)
-                   (values npos (car lamt))] ;; return body type
-                  [else ;; here
-                   (let-values ([(np atype) (typecheck expr npos tenv)])
-                     (if (type-equal? atype (car lamt^))
-                         (loop5 np (cdr lamt^) (sub1 count))
-                         (error 'typecheck "no type: ~a~n" expr)))]))])))]
-    [(symbol? tag)
-     (values (i+ 1 pos) (apply-env tenv tag))]
-    [else
-     (error 'typecheck "bad form: ~a" expr)]))
+|#
+  
+  
 
 
 ;; 
@@ -179,10 +222,10 @@
  2. 'lamt n pt_1 pt_2 ... pt_n body_type
 
 |#
+
 (define (typecheck-driver expr pos tenv)
-  (let-values ([(_ type)
-                (typecheck expr pos tenv)])
-    type))
+  (typecheck expr pos tenv))
+
 #|
   (profile-thunk (thunk (let-values ([(_ __)
                                       (typecheck expr pos tenv out 0)])
