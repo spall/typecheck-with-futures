@@ -2,7 +2,16 @@
 
 (provide ;;type?
          type-equal?
-         typecheck-expr)
+         typecheck-expr
+	 NULL
+	 TRUE
+	 FALSE
+	 BEGIN
+	 LAMBDA
+	 APP
+	 SYM
+	 NUM)
+
 
 (require profile
          (rename-in racket/unsafe/ops
