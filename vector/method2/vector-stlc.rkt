@@ -3,6 +3,7 @@
 (provide ;;type?
          type-equal?
          typecheck-expr
+         typecheck-sequential
 	 NULL
 	 TRUE
 	 FALSE
@@ -131,68 +132,71 @@
 ;; store size of, for instance, lambda, so typecheck doesn't have to return multiple values.
 ;; can just add that value to pos when it returns.
 (define (typecheck expr types pos tenv)
-  
+
   (define type-store types)
+
   (define (typecheck-driver expr pos tenv)
     (define tag (ufxref expr pos))
     (cond
-      [(i= NUM tag)
-       'int]
-      [(or (i= TRUE tag) (i= FALSE tag))
-       'bool]
-      [(i= NULL tag)
-       'ntype]
+      [(i= NUM tag)          'int]
+      [(i= NULL tag)         'ntype]
+      [(or (i= TRUE tag)
+           (i= FALSE tag))   'bool]
       [(i= SYM tag)
+       
        (apply-env tenv (ufxref expr (i+ 1 pos)))]
-
-      [(i= BEGIN tag)
+      [(i= BEGIN tag) ;; pos + 1 is length. pos + 2 is count
+       
        (let ([count (ufxref expr (i+ 2 pos))])
-         (let loop1 ([p (i+ 3 pos)]
-                     [c count])
-           (if (i< c 2)
-               (typecheck-driver expr p tenv)
-               (let ([_ (typecheck-driver expr p tenv)]
-               	     [p1 (get-len expr p)])
-                 (loop1 p1 (i- c 1))))))]
-
-      [(i= LAMBDA tag)
+         (let loop ([pos (i+ 3 pos)]
+                    [count count])
+           (if (i< count 2)
+               (typecheck-driver expr pos tenv)
+               (begin
+                 (typecheck-driver expr pos tenv) ;; don't care
+                 (loop (i+ pos (get-len expr pos))
+                       (i- count 1))))))]
+      [(i= LAMBDA tag) ;; 1 + pos is length. pos + 2 is param count
+       
        (let ([count (ufxref expr (i+ 2 pos))])
-         (let loop ([tenv_ tenv]
-                    [p (i+ 3 pos)]
-           	    [c count]
-                    [type '()])
-           (if (< c 1) ;; typecheck body
-               (let ([btype (typecheck-driver expr p tenv_)])
-                 (cons btype (reverse type))) ;; hmmmmmm
-               (let* ([sym (ufxref expr p)]
-                      [atype_index (ufxref expr (i+ 1 p))] ;; atype is an index into types now.
-		      [atype (uref type-store atype_index)])
-                 (loop (extend-env tenv_ sym atype)
-                       (i+ 2 p)
-                       (i- c 1)
-                       (cons atype type))))))]
-      [(i= APP tag)
-       (let* ([lamt (typecheck-driver expr (i+ 2 pos) tenv)]
-              [npos (i+ (get-len expr (i+ 2 pos)) pos 2)]
-              [arg_num (ufxref expr npos)])
+         (let loop ([pos (i+ 3 pos)]
+                    [count count]
+                    [tenv tenv]
+                    [lam-type '()])
+           (if (i< count 1) ;; typecheck body
+               (cons (typecheck-driver expr pos tenv)
+                    lam-type);; (reverse lam-type)) ;; not ideal
+               (let ([sym (ufxref expr (i+ 1 pos))] ;; SYM is at pos, actually "sym" is at pos + 1
+                     [ptype (uref type-store (ufxref expr (i+ pos 2)))])  ;;(typecheck-driver expr (i+ pos 2) tenv)])
+                 (loop (i+ (i+ pos 2) 1)
+                       (i- count 1)
+                       (extend-env tenv sym ptype) ;; extend type env
+                       (cons ptype lam-type))))))]
+      [(i= APP tag)   ;; 1 + pos is length. pos + 2 is e1 ... after e1. number of args. then args.
+
+       (let ([e1-type (typecheck-driver expr (i+ 2 pos) tenv)]
+             [after-e1 (i+ (i+ 2 pos)
+                           (get-len expr (i+ 2 pos)))])
          (cond
-           [(not (lambda-type? lamt))
-            (error 'typecheck "no type ~a~n" expr)]
-           [else
-            (let loop5 ([npos (i+ 1 npos)] ;; position in expr
-                        [lamt^ (ucdr lamt)] ;; position in lamt
-                      	[count arg_num]) ;; how many times we loop
-              (cond
-                [(i< count 1)
-               	 (ucar lamt)] ;; return body type
-              	[else ;; here
-                 (let ([atype (typecheck-driver expr npos tenv)]
-                       [np (i+ (get-len expr npos) npos)])
-                   (if (type-equal? atype (ucar lamt^))
-                       (loop5 np (ucdr lamt^) (i- count 1))
-                       (error 'typecheck  "no type: ~a~n" expr)))]))]))]
-      [else
-       (error 'typecheck "bad form: ~a" expr)]))
+           [(lambda-type? e1-type)
+            (let ([btype (car e1-type)]
+                  [ptypes (cdr e1-type)]
+                  [arg-count (ufxref expr after-e1)])
+              (let loop ([ptypes ptypes]
+                         [ac arg-count]
+                         [pos (i+ after-e1 1)])
+                (cond
+                  [(and (i= ac 0) (empty? ptypes))
+                   btype]
+                  [(or (i= ac 0) (empty? ptypes))
+                   (error "Args and params not same length~n")]
+                  [(type-equal? (car ptypes) (typecheck-driver expr pos tenv))
+                   (loop (cdr ptypes) (i- ac 1) (i+ pos (get-len expr pos)))]
+                  [else
+                   (error "Arg and param type did not match: ~a ~a~n" (typecheck-driver expr pos tenv) (car ptypes))])))]
+           [else (error "Not a lambda type: " e1-type)]))]
+      [else (error "Not a valid expression: " tag)]))
+
   (typecheck-driver expr pos tenv)) 
 
 ;; typechecker that gathers constraints as it goes and then checks them all at the end.
@@ -216,8 +220,14 @@
 
 |#
 
-(define (typecheck-driver expr pos tenv)
-  (typecheck expr pos tenv))
+(define (typecheck-driver expr types pos tenv)
+  (typecheck expr types pos tenv))
+
+(define (typecheck-sequential exprs types)
+  (void
+   (for ([e (in-vector exprs)]
+         [t (in-vector types)])
+     (typecheck-expr e t))))
 
 #|
   (profile-thunk (thunk (let-values ([(_ __)
