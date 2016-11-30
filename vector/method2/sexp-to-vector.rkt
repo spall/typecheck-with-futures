@@ -103,8 +103,6 @@
   (define sym (car expr))
   (define type (caddr expr))
   (define nvec (vector-append types-vec (vector type)))
-  (display "new vec")
-  (displayln nvec)
   nvec)
 ;;  (vector-set! types-vec pos type))
 
