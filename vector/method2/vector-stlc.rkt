@@ -4,6 +4,8 @@
          type-equal?
          typecheck-expr
          typecheck-sequential
+         naive-typecheck-parallel
+         better-typecheck-parallel
 	 NULL
 	 TRUE
 	 FALSE
@@ -12,6 +14,12 @@
 	 APP
 	 SYM
 	 NUM)
+
+;; dump memory stats
+;; parallel speedup?
+;; plai/typed
+;; write plai/typed program that takes long time to typecheck.
+;; build matthew's branch of racket "linklet" macro-expander is written in racket.
 
 
 (require profile
@@ -27,7 +35,8 @@
                     [unsafe-fx< i<]
                     [unsafe-fx+ i+]
                     [unsafe-fx- i-]
-		    [unsafe-fx= i=]))
+		    [unsafe-fx= i=])
+         future-visualizer)
 ;; language
 
 #|
@@ -159,7 +168,7 @@
       [(i= LAMBDA tag) ;; 1 + pos is length. pos + 2 is param count
        
        (let ([count (ufxref expr (i+ 2 pos))])
-         (let loop ([pos (i+ 3 pos)]
+         (let loop1 ([pos (i+ 3 pos)]
                     [count count]
                     [tenv tenv]
                     [lam-type '()])
@@ -168,7 +177,7 @@
                     lam-type);; (reverse lam-type)) ;; not ideal
                (let ([sym (ufxref expr (i+ 1 pos))] ;; SYM is at pos, actually "sym" is at pos + 1
                      [ptype (uref type-store (ufxref expr (i+ pos 2)))])  ;;(typecheck-driver expr (i+ pos 2) tenv)])
-                 (loop (i+ (i+ pos 2) 1)
+                 (loop1 (i+ (i+ pos 2) 1)
                        (i- count 1)
                        (extend-env tenv sym ptype) ;; extend type env
                        (cons ptype lam-type))))))]
@@ -182,7 +191,7 @@
             (let ([btype (car e1-type)]
                   [ptypes (cdr e1-type)]
                   [arg-count (ufxref expr after-e1)])
-              (let loop ([ptypes ptypes]
+              (let loop2 ([ptypes ptypes]
                          [ac arg-count]
                          [pos (i+ after-e1 1)])
                 (cond
@@ -191,7 +200,7 @@
                   [(or (i= ac 0) (empty? ptypes))
                    (error "Args and params not same length~n")]
                   [(type-equal? (car ptypes) (typecheck-driver expr pos tenv))
-                   (loop (cdr ptypes) (i- ac 1) (i+ pos (get-len expr pos)))]
+                   (loop2 (cdr ptypes) (i- ac 1) (i+ pos (get-len expr pos)))]
                   [else
                    (error "Arg and param type did not match: ~a ~a~n" (typecheck-driver expr pos tenv) (car ptypes))])))]
            [else (error "Not a lambda type: " e1-type)]))]
@@ -213,7 +222,7 @@
  3. begin:       'begin n expr_1 expr_2 ... expr_n
  4. lambda:      'lambda n a+t_1 a+t_2 ... a+t_n body
  5. application: 'app proc n arg_1 arg_2 ... arg_n
-
+LAMBDA
  types:
  1. prim types can just be stored regularly
  2. 'lamt n pt_1 pt_2 ... pt_n body_type
@@ -229,6 +238,27 @@
          [t (in-vector types)])
      (typecheck-expr e t))))
 
+(define (naive-typecheck-parallel exprs types)
+  (for-each touch
+            (for/list ([e (in-vector exprs)]
+                       [t (in-vector types)])
+              (future (λ ()
+                        (typecheck-expr e t))))))
+
+(define (better-typecheck-parallel exprs types)
+  (define pcount (processor-count))
+  (define len (vector-length exprs))
+  (define seq-size (ceiling (/ len pcount)))
+
+  (for-each touch
+            (for/list ([pc (in-range (min pcount len))])
+              (future (λ ()
+                        (for ([e (in-vector exprs (* pc seq-size)
+                                            (min len (* (+ 1 pc) seq-size)))]
+                              [t (in-vector types (* pc seq-size)
+                                            (min len (* (+ 1 pc) seq-size)))])
+                          (typecheck-expr e t)))))))
+  
 #|
   (profile-thunk (thunk (let-values ([(_ __)
                                       (typecheck expr pos tenv out 0)])
